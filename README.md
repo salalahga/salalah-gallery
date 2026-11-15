@@ -99,7 +99,7 @@ Development: run `npm run dev:server` and `npm run dev` in two terminals. Vite p
 | Setting | Meaning |
 |---|---|
 | `DATABASE_URL` | PostgreSQL connection string (recommended for production). TLS is verified unless the host is localhost or the URL has `sslmode=disable` |
-| *(not set)* | SQLite file at `DATA_DIR/workshop.db` (default `./data`). Good for one machine; this needs a persistent disk |
+| *(not set)* | PGlite — the same PostgreSQL engine embedded in a folder (`DATA_DIR/pglite`, default `./data`). For development or one machine with a persistent disk. Refused when `NODE_ENV=production` |
 | `PORT` | HTTP port (default 8787) |
 | `SESSION_SECRET` | Optional. If unset, a secret is generated once and stored in the database |
 
@@ -121,7 +121,7 @@ New kinds of work (e.g. *Aluminium*, *Upholstery*) need **no code** — add them
 ## Project layout
 
 ```
-server/        Node server: API, logins, role permissions, Postgres/SQLite storage,
+server/        Node server: API, logins, role permissions, PostgreSQL / PGlite storage,
                plugins (Telegram/email/webhooks), automations engine, iCal feed
 src/plugins/   plugin catalog, plugin hooks (QR, templates, calendar, CSV), PWA
 src/core/      types, store (sync + offline outbox), session, api, calculations, i18n, router, website generator

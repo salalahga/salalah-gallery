@@ -1,4 +1,5 @@
-// Storage adapter: PostgreSQL when DATABASE_URL is set, otherwise a local SQLite file.
+// Storage adapter: PostgreSQL when DATABASE_URL is set (production), otherwise PGlite — the same
+// PostgreSQL engine embedded in a local folder (development / single machine). One SQL dialect for both.
 // Every module's data lives in one generic `records` table, so new modules need no migration.
 import path from 'node:path';
 import fs from 'node:fs';
@@ -34,22 +35,22 @@ export async function openDb() {
     for (const s of SCHEMA) await db.run(s);
     return db;
   }
-  const { DatabaseSync } = await import('node:sqlite');
-  const dir = process.env.DATA_DIR || path.resolve('data');
+  if (process.env.NODE_ENV === 'production') throw new Error('DATABASE_URL is required in production');
+  const { PGlite } = await import('@electric-sql/pglite');
+  const dir = path.join(process.env.DATA_DIR || path.resolve('data'), 'pglite');
   fs.mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, 'workshop.db');
-  const sq = new DatabaseSync(file);
-  sq.exec('PRAGMA journal_mode = WAL');
+  const lite = new PGlite(dir);
+  const conv = (sql) => { let i = 0; return sql.replace(/\?/g, () => `$${++i}`); };
+  const norm = (rows) => rows.map((r) => ('updated_at' in r ? { ...r, updated_at: Number(r.updated_at) } : r));
+  // PGlite runs one statement at a time; queue calls so a transaction is never interleaved.
+  let chain = Promise.resolve();
+  const serial = (fn) => { const r = chain.then(fn, fn); chain = r.catch(() => {}); return r; };
   const db = {
-    kind: 'sqlite:' + file,
-    all: async (sql, p = []) => sq.prepare(sql).all(...p),
-    get: async (sql, p = []) => sq.prepare(sql).get(...p),
-    run: async (sql, p = []) => { sq.prepare(sql).run(...p); },
-    tx: async (fn) => {
-      sq.exec('BEGIN');
-      try { await fn({ run: async (s, p = []) => sq.prepare(s).run(...p) }); sq.exec('COMMIT'); }
-      catch (e) { sq.exec('ROLLBACK'); throw e; }
-    },
+    kind: 'pglite:' + dir,
+    all: (sql, p = []) => serial(async () => norm((await lite.query(conv(sql), p)).rows)),
+    get: (sql, p = []) => serial(async () => norm((await lite.query(conv(sql), p)).rows)[0]),
+    run: (sql, p = []) => serial(async () => { await lite.query(conv(sql), p); }),
+    tx: (fn) => serial(() => lite.transaction((t) => fn({ run: (s, p = []) => t.query(conv(s), p) }))),
   };
   for (const s of SCHEMA) await db.run(s);
   return db;
