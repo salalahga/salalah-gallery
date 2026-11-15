@@ -23,8 +23,8 @@ export default function Dashboard() {
   return (
     <>
       <div className="hero">
-        <h1>{t(greet)} 👋</h1>
-        <p>{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {active.length} active jobs · {db.tasks.filter((x) => x.status !== 'done').length} open tasks</p>
+        <div className="hero-title">{(s.logoLight || s.logo) && <img src={s.logoLight || s.logo} alt="" />}<h1>{s.businessName}</h1></div>
+        <p>{t(greet)} 👋 · {new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {active.length} active jobs · {db.tasks.filter((x) => x.status !== 'done').length} open tasks</p>
         <div className="hero-actions">
           <button className="btn primary" onClick={() => go('jobs', { new: '1' })}><Plus size={16} />{t('New job')}</button>
           <button className="btn" onClick={() => go('quotations', { new: '1' })}><FileText size={16} />{t('New quotation')}</button>

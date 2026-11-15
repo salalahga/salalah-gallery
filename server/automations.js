@@ -186,7 +186,7 @@ export function createAutomations(db, plugins, { tick }) {
       job: { id: 'demo', code: 'JOB-000', title: 'Sample kitchen', dueDate: new Date().toISOString().slice(0, 10), status: 'production', priority: 'high' },
       customer: { name: 'Sample Customer', email: '' }, task: { title: 'Sample task', dueDate: 'tomorrow', priority: 'normal' }, staff: {},
       quotation: { number: 'QT-TEST', title: 'Sample quotation' }, invoice: { number: 'INV-TEST', dueDate: 'yesterday' }, item: { name: 'MDF Board', thickness: '18mm', qty: 3, unit: 'sheet', reorder: 10 },
-      total: '100.000', amount: '50.000', balance: '50.000', summary: '📋 Test summary from WoodWorks Pro', raw: { test: true },
+      total: '100.000', amount: '50.000', balance: '50.000', summary: '📋 Test summary', raw: { test: true },
     };
     const ctx = { ...sample, event: TRIGGERS[rule.trigger] || rule.trigger, date: new Date().toISOString().slice(0, 10) };
     const out = [];

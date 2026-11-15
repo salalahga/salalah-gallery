@@ -65,6 +65,7 @@ function Workspace() {
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; try { localStorage.setItem('ww-theme', dark ? 'dark' : 'light'); } catch { /* */ } }, [dark]);
   useEffect(() => { document.documentElement.lang = 'en'; }, []);
+  useEffect(() => { document.title = s.businessName; }, [s.businessName]);
   useEffect(() => { setOpen(false); window.scrollTo(0, 0); }, [page]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(true); } };

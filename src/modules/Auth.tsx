@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { LogIn, ShieldCheck, Loader2 } from 'lucide-react';
 import { session } from '../core/session';
-import { hasLocalData, localSnapshot } from '../core/store';
+import { hasLocalData, localSnapshot, useSettings } from '../core/store';
 import { seed } from '../core/seed';
 
 const T = {
@@ -11,11 +11,12 @@ const T = {
 };
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const s = useSettings();
   return (
     <div className="auth">
       <div className="auth-side">
-        <div className="logo big"><svg viewBox="0 0 64 64"><path d="M14 44 L32 14 L50 44 Z" fill="none" stroke="currentColor" strokeWidth="6" strokeLinejoin="round" /><path d="M22 44h20" stroke="#e0a458" strokeWidth="6" strokeLinecap="round" /></svg></div>
-        <h1>WoodWorks Pro</h1>
+        <div className="logo big has-img">{s.logoLight || s.logo ? <img src={s.logoLight || s.logo} alt="" /> : null}</div>
+        <h1>{s.businessName}</h1>
         <p>Jobs · CNC · Staff · Payroll · Quotations · Accounts · Sales · Social · Website</p>
       </div>
       <div className="auth-main"><div className="auth-card">{children}</div></div>

@@ -355,3 +355,9 @@ code { background: var(--panel-2); border-radius: 5px; padding: 1px 5px; font-si
 .doc-words { margin: 10px 0 0; font-size: 12.5px; color: #444; }
 .logo.has-img { background: transparent; } .logo.has-img img { object-fit: contain; }
 @media print { .doc .doc-watermark { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+.hero-title { display: flex; align-items: center; gap: 14px; position: relative; z-index: 1; }
+.hero-title img { height: 46px; width: auto; }
+.hero h1 { font-size: 30px; }
+.logo.big.has-img { background: transparent; display: block; width: auto; height: auto; border-radius: 0; overflow: visible; align-self: flex-start; }
+.logo.big.has-img img { display: block; height: 96px; width: auto; max-width: 100%; object-fit: contain; }
+@media (max-width: 860px) { .logo.big.has-img img { height: 56px; } .hero-title img { height: 36px; } .hero h1 { font-size: 22px; } }

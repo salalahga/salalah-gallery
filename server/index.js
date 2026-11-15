@@ -203,11 +203,11 @@ app.put('/api/plugins/:id', auth, adminOnly, wrap(async (req, res) => {
 }));
 app.post('/api/plugins/:id/test', auth, adminOnly, wrap(async (req, res) => {
   const s = await db.get('SELECT value FROM kv WHERE key = ?', ['settings']);
-  const name = s ? JSON.parse(s.value).businessName : 'WoodWorks Pro';
+  const name = (s && JSON.parse(s.value).businessName) || 'Teraz Investment L.L.C';
   try {
     if (req.params.id === 'telegram') await plugins.telegram(`✅ ${name}: Telegram is connected.`);
-    else if (req.params.id === 'email') await plugins.email({ subject: `${name}: email is connected`, text: 'This is a test email from WoodWorks Pro.' });
-    else if (req.params.id === 'webhooks') await plugins.webhook('test', { message: 'Test from WoodWorks Pro', business: name });
+    else if (req.params.id === 'email') await plugins.email({ subject: `${name}: email is connected`, text: `This is a test email from ${name}.` });
+    else if (req.params.id === 'webhooks') await plugins.webhook('test', { message: `Test from ${name}`, business: name });
     else return res.status(400).json({ error: 'This plugin has no test' });
     res.json({ ok: true });
   } catch (e) { res.status(400).json({ error: e.message }); }
