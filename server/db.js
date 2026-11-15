@@ -12,13 +12,31 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS automation_log (id TEXT PRIMARY KEY, at BIGINT NOT NULL, rule TEXT NOT NULL, trig TEXT NOT NULL, ok INTEGER NOT NULL, detail TEXT)`,
 ];
 
+/**
+ * TLS settings with libpq `sslmode` meaning (from DATABASE_SSL, else the URL's sslmode):
+ *   disable                  → no TLS (also used automatically for localhost)
+ *   require / prefer / allow → encrypted, server certificate not checked (managed databases
+ *                              with self-signed certificates on the provider's network)
+ *   verify-ca / verify-full  → encrypted and verified; default when nothing is set.
+ *                              A private CA can be supplied with PGSSLROOTCERT (file path).
+ */
+export function pgSsl(rawUrl, envMode, rootCertPath) {
+  const url = new URL(rawUrl);
+  const mode = (envMode || url.searchParams.get('sslmode') || '').toLowerCase();
+  for (const k of ['sslmode', 'sslrootcert', 'sslcert', 'sslkey']) url.searchParams.delete(k);
+  const local = ['localhost', '127.0.0.1', '::1'].includes(url.hostname);
+  let ssl;
+  if (mode === 'disable' || (local && !mode)) ssl = false;
+  else if (['require', 'prefer', 'allow', 'no-verify'].includes(mode)) ssl = { rejectUnauthorized: false };
+  else ssl = rootCertPath ? { ca: fs.readFileSync(rootCertPath, 'utf8') } : true;
+  return { connectionString: url.toString(), ssl };
+}
+
 export async function openDb() {
   if (process.env.DATABASE_URL) {
     const { default: pg } = await import('pg');
-    // TLS is verified by default. Local databases skip TLS; a provider with a private CA can be
-    // trusted by pointing PGSSLROOTCERT / NODE_EXTRA_CA_CERTS at its certificate.
-    const ssl = /sslmode=disable|@localhost|@127\.0\.0\.1/.test(process.env.DATABASE_URL) ? false : true;
-    const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, ssl });
+    const { connectionString, ssl } = pgSsl(process.env.DATABASE_URL, process.env.DATABASE_SSL, process.env.PGSSLROOTCERT);
+    const pool = new pg.Pool({ connectionString, ssl });
     const conv = (sql) => { let i = 0; return sql.replace(/\?/g, () => `$${++i}`); };
     const norm = (rows) => rows.map((r) => ('updated_at' in r ? { ...r, updated_at: Number(r.updated_at) } : r));
     const db = {
