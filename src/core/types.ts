@@ -19,7 +19,7 @@ export interface Task extends Base { title: string; jobId?: ID; staffId?: ID; st
 export type SalaryType = 'monthly' | 'daily' | 'hourly';
 export interface Staff extends Base {
   name: string; role: string; phone?: string; nationality?: string; idNumber?: string; joinDate?: string; salaryType: SalaryType; rate: number;
-  allowance: number; skills: string[]; active: boolean; color: string; bank?: string;
+  allowance: number; skills: string[]; active: boolean; color: string; bank?: string; telegramChatId?: string; email?: string;
 }
 
 export type AttendanceMark = 'P' | 'A' | 'H' | 'L';
@@ -63,7 +63,11 @@ export interface Settings {
   workHoursPerDay: number; overtimeMultiplier: number; workingDaysPerMonth: number;
   website: { hero: string; about: string; theme: string; gallery: string[]; showProducts: boolean; mapUrl: string };
   mlNumerals?: boolean;
+  timezone?: string; dailyHour?: number;
+  /** Non-secret plugin switches and options, shared with every device. Secrets live on the server only. */
+  plugins?: Record<string, PluginState>;
 }
+export interface PluginState { enabled: boolean; [k: string]: unknown }
 
 export interface DB {
   customers: Customer[]; jobs: Job[]; tasks: Task[]; staff: Staff[]; attendance: Attendance[]; advances: Advance[]; payslips: Payslip[];

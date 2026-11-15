@@ -44,6 +44,8 @@ export default function StaffPage() {
           <Field label="Salary type"><select value={edit.salaryType} onChange={(e) => setEdit({ ...edit, salaryType: e.target.value as SalaryType })}><option value="monthly">Monthly</option><option value="daily">Daily wage</option><option value="hourly">Hourly</option></select></Field>
           <Field label={`Rate (${s.currency})`}><input type="number" value={edit.rate ?? 0} onChange={(e) => setEdit({ ...edit, rate: +e.target.value })} /></Field>
           <Field label="Monthly allowance"><input type="number" value={edit.allowance ?? 0} onChange={(e) => setEdit({ ...edit, allowance: +e.target.value })} /></Field>
+          <Field label="Telegram chat ID (for task alerts)"><input value={edit.telegramChatId || ''} onChange={(e) => setEdit({ ...edit, telegramChatId: e.target.value })} placeholder="from @userinfobot" /></Field>
+          <Field label="Email"><input type="email" value={edit.email || ''} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
           <Field label="Bank / account"><input value={edit.bank || ''} onChange={(e) => setEdit({ ...edit, bank: e.target.value })} /></Field>
           <Field label="Active"><select value={edit.active ? '1' : '0'} onChange={(e) => setEdit({ ...edit, active: e.target.value === '1' })}><option value="1">Active</option><option value="0">Inactive</option></select></Field>
           <Field label="Skills (comma separated)" span={3}><input value={(edit.skills || []).join(', ')} onChange={(e) => setEdit({ ...edit, skills: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="CNC, Kitchen, PU polish" /></Field>

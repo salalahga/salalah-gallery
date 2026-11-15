@@ -9,9 +9,10 @@ import { Modal, Field, PageHeader, Badge, Empty, Tabs, SearchBox, Stat, toast, c
 import { LinesEditor, DocView } from '../components/DocEditor';
 import { FileText, CheckCircle2, Send } from 'lucide-react';
 import { useT } from '../core/i18n';
+import { useWaText } from '../plugins/hooks';
 
 export default function Quotations() {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute();
+  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute(); const wa = useWaText();
   const [edit, setEdit] = useState<Partial<Quotation> | null>(null);
   const [view, setView] = useState<Quotation | null>(null);
   const [tab, setTab] = useState<'all' | QuoteStatus>('all'); const [q, setQ] = useState('');
@@ -29,7 +30,7 @@ export default function Quotations() {
     const inv = store.upsert('invoices', { number: nextNumber('INV', db.invoices.map((i) => i.number)), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), customerId: qt.customerId, title: qt.title, items: structuredClone(qt.items), discount: qt.discount, vat: qt.vat, paid: 0, quotationId: qt.id, jobId: qt.jobId });
     go('invoices', { id: inv.id });
   };
-  const share = (qt: Quotation) => { const c = L.customer(qt.customerId); const tot = docTotals(qt); return waLink(c?.phone, `Dear ${c?.name},\nPlease find our quotation ${qt.number} for "${qt.title}".\n\n${qt.items.map((l) => `• ${l.description} — ${l.qty} ${l.unit} × ${l.rate}`).join('\n')}\n\nTotal (incl. VAT): ${money(tot.total, s)}\nValid until ${fmtDate(qt.validUntil)}.\n\nThank you,\n${s.businessName}\n${s.phone}`); };
+  const share = (qt: Quotation) => { const c = L.customer(qt.customerId); const tot = docTotals(qt); return waLink(c?.phone, wa('quote', { customer: c?.name, number: qt.number, title: qt.title, lines: qt.items.map((l) => `• ${l.description} — ${l.qty} ${l.unit} × ${l.rate}`).join('\n'), total: money(tot.total, s), valid: fmtDate(qt.validUntil), business: s.businessName, phone: s.phone })); };
   const sum = (st: QuoteStatus) => db.quotations.filter((x) => x.status === st).reduce((n, x) => n + docTotals(x).total, 0);
   const won = db.quotations.filter((x) => x.status === 'accepted').length; const decided = db.quotations.filter((x) => ['accepted', 'rejected'].includes(x.status)).length;
 

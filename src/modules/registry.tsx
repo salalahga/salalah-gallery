@@ -7,7 +7,7 @@
 import type { ComponentType } from 'react';
 import {
   LayoutDashboard, Hammer, ListChecks, Users, CalendarCheck, Wallet, Contact, FileText, Receipt, Landmark, Boxes, ShoppingCart,
-  Share2, Globe, Settings as Cog, type LucideIcon,
+  Share2, Globe, Settings as Cog, Puzzle, Zap, type LucideIcon,
 } from 'lucide-react';
 import Dashboard from './Dashboard';
 import Jobs from './Jobs';
@@ -24,6 +24,8 @@ import Sales from './Sales';
 import Social from './Social';
 import Website from './Website';
 import SettingsPage from './Settings';
+import Plugins from './Plugins';
+import Automations from './Automations';
 
 import type { Role } from '../core/session';
 
@@ -46,6 +48,8 @@ export const modules: ModuleDef[] = [
   { id: 'accounts', label: 'Accounts', group: 'Money', icon: Landmark, component: Accounts, roles: OFFICE, desc: 'Income, expenses, profit & loss' },
   { id: 'social', label: 'Social Media', group: 'Growth', icon: Share2, component: Social, roles: OFFICE, desc: 'Plan & share posts' },
   { id: 'website', label: 'Website', group: 'Growth', icon: Globe, component: Website, roles: OWNER, desc: 'Build your business website' },
+  { id: 'plugins', label: 'Plugins', group: 'System', icon: Puzzle, component: Plugins, roles: OWNER, desc: 'Telegram, email, webhooks, calendar, QR, export, app install' },
+  { id: 'automations', label: 'Automations', group: 'System', icon: Zap, component: Automations, roles: OWNER, desc: 'When X happens → notify / webhook / create task' },
   { id: 'settings', label: 'Settings', group: 'System', icon: Cog, component: SettingsPage, roles: OWNER, desc: 'Business profile, work types, backup' },
 ];
 

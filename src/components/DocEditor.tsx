@@ -2,6 +2,7 @@ import { Plus, Trash2 } from 'lucide-react';
 import type { Invoice, LineItem, Quotation, Settings, Customer } from '../core/types';
 import { uid } from '../core/store';
 import { docTotals, lineTotal, money, fmtDate } from '../core/calc';
+import { QR, useDocQr } from '../plugins/hooks';
 
 type Doc = Partial<Quotation> | Partial<Invoice>;
 
@@ -41,6 +42,7 @@ export function LinesEditor({ doc, set, s }: { doc: Doc; set: (p: Doc) => void; 
 
 export function DocView({ kind, doc, s, customer, extra }: { kind: 'QUOTATION' | 'TAX INVOICE'; doc: Quotation | Invoice; s: Settings; customer?: Customer; extra?: React.ReactNode }) {
   const tot = docTotals(doc);
+  const qr = useDocQr();
   return (
     <div className="print-area"><div className="doc">
       <div className="doc-head">
@@ -59,6 +61,7 @@ export function DocView({ kind, doc, s, customer, extra }: { kind: 'QUOTATION' |
         {extra}
       </div>
       {'terms' in doc && doc.terms && <div className="doc-terms"><b>Terms & conditions</b><br />{doc.terms}</div>}
+      <div className="doc-foot">{qr ? <QR value={qr.url} caption={qr.caption} /> : <span />}</div>
       <div className="doc-sign"><div>Authorised signature</div><div>Customer acceptance</div></div>
     </div></div>
   );

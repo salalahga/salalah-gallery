@@ -17,7 +17,8 @@ export const defaultSettings: Settings = {
   incomeCategories: ['Job Payment', 'Product Sale', 'CNC Service', 'Advance', 'Other'],
   roles: ['Carpenter', 'CNC Operator', 'Helper', 'Polisher', 'Supervisor', 'Designer', 'Driver', 'Accountant'],
   quoteTerms: '50% advance to confirm the order. Balance on delivery.\nQuotation valid for 15 days.\nDelivery time starts after design approval.',
-  workHoursPerDay: 8, overtimeMultiplier: 1.25, workingDaysPerMonth: 26,
+  workHoursPerDay: 8, overtimeMultiplier: 1.25, workingDaysPerMonth: 26, timezone: 'Asia/Muscat', dailyHour: 8,
+  plugins: { whatsapp: { enabled: true }, print: { enabled: true }, maps: { enabled: true }, export: { enabled: true } },
   website: {
     hero: 'Handcrafted furniture, precise CNC cutting and complete interior woodwork.',
     about: 'We are a full-service carpentry workshop delivering kitchens, wardrobes, doors, CNC panels and custom furniture with quality materials and on-time installation.',

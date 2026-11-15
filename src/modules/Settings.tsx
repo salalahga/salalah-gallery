@@ -1,25 +1,16 @@
 import { useRef, useState } from 'react';
-import { Plus, Trash2, Download, Upload, RotateCcw, Plug } from 'lucide-react';
+import { Plus, Trash2, Download, Upload, RotateCcw } from 'lucide-react';
 import { store, useDB, exportBackup, uid } from '../core/store';
 import type { WorkType, DB } from '../core/types';
-import { PageHeader, Field, Tabs, toast, Badge } from '../components/ui';
+import { PageHeader, Field, Tabs, toast } from '../components/ui';
 import { useT } from '../core/i18n';
 import Users from './Users';
 
-const INTEGRATIONS = [
-  { name: 'WhatsApp', area: 'Customers & staff', status: 'Built in', desc: 'Send quotations, invoices, job updates and task assignments as WhatsApp messages.' },
-  { name: 'Print / PDF', area: 'Documents', status: 'Built in', desc: 'Quotations, invoices, payslips and receipts print or save as PDF.' },
-  { name: 'Facebook · X · LinkedIn share', area: 'Social', status: 'Built in', desc: 'One-click share from the post planner.' },
-  { name: 'QuickBooks', area: 'Accounts / Payroll', status: 'Available via Claude', desc: 'Sync invoices, expenses and payroll to QuickBooks Online.' },
-  { name: 'Metricool / Postiz', area: 'Social', status: 'Available via Claude', desc: 'Auto-publish scheduled posts and pull analytics for Instagram, Facebook, TikTok.' },
-  { name: 'Canva / Adobe Express', area: 'Social', status: 'Available via Claude', desc: 'Design post graphics and brochures for your jobs.' },
-  { name: 'Netlify / Hostinger / Wix', area: 'Website', status: 'Available via Claude', desc: 'Publish the generated website on your own domain.' },
-  { name: 'Google Sheets / Drive', area: 'Backup & reports', status: 'Available via Claude', desc: 'Export accounts, payroll and job reports to Sheets.' },
-];
+
 
 export default function SettingsPage() {
   const db = useDB(); const s = db.settings; const t = useT();
-  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'users' | 'integrations' | 'data'>('business');
+  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'users' | 'data'>('business');
   const fileRef = useRef<HTMLInputElement>(null);
   const set = store.setSettings;
   const setWT = (i: number, p: Partial<WorkType>) => set({ workTypes: s.workTypes.map((w, k) => (k === i ? { ...w, ...p } : w)) });
@@ -29,7 +20,7 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader title={t('Settings')} sub="Business profile, work types, lists, integrations and backup." />
-      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'users', label: 'Users & logins' }, { id: 'integrations', label: 'Integrations' }, { id: 'data', label: 'Backup' }]} /></div>
+      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'users', label: 'Users & logins' }, { id: 'data', label: 'Backup' }]} /></div>
 
       {tab === 'business' && <div className="card"><div className="form">
         <Field label="Business name" span={2}><input value={s.businessName} onChange={(e) => set({ businessName: e.target.value })} /></Field>
@@ -46,6 +37,9 @@ export default function SettingsPage() {
         <Field label="VAT number"><input value={s.vatNumber} onChange={(e) => set({ vatNumber: e.target.value })} /></Field>
         <Field label="CR / licence number"><input value={s.crNumber} onChange={(e) => set({ crNumber: e.target.value })} /></Field>
         <Field label="Default language"><select value={s.lang} onChange={(e) => set({ lang: e.target.value as 'en' | 'ml' })}><option value="en">English</option><option value="ml">മലയാളം (Malayalam)</option></select></Field>
+        <Field label="Time zone"><input value={s.timezone || 'Asia/Muscat'} onChange={(e) => set({ timezone: e.target.value })} placeholder="Asia/Muscat" /></Field>
+        <Field label="Daily summary time (hour, 0–23)"><input type="number" min={0} max={23} value={s.dailyHour ?? 8} onChange={(e) => set({ dailyHour: +e.target.value })} /></Field>
+        <div className="muted" style={{ alignSelf: 'end' }}>Telegram, email, QR codes and more: <a href="#/plugins" style={{ textDecoration: 'underline' }}>Plugins</a></div>
         <Field label="Default quotation terms" span={3}><textarea value={s.quoteTerms} onChange={(e) => set({ quoteTerms: e.target.value })} /></Field>
       </div></div>}
 
@@ -79,10 +73,7 @@ export default function SettingsPage() {
         </div></div>
       </div>}
 
-      {tab === 'integrations' && <div className="card"><h3><span className="flex"><Plug size={17} />Connectors</span></h3>
-        <div className="grid g2">{INTEGRATIONS.map((x) => <div key={x.name} className="integ"><div style={{ flex: 1 }}><b>{x.name}</b><span className="muted">{x.area}</span><p style={{ margin: '6px 0 0', fontSize: 13.5 }}>{x.desc}</p></div><Badge tone={x.status === 'Built in' ? 'green' : 'blue'}>{x.status}</Badge></div>)}</div>
-        <p className="muted" style={{ marginTop: 14 }}>“Available via Claude” connectors work by asking Claude, e.g. “sync this month’s invoices to QuickBooks” or “publish my website to Netlify”. Live in-app sync needs a small server and your account keys — the module system is ready for it.</p>
-      </div>}
+      
 
       {tab === 'users' && <Users />}
 

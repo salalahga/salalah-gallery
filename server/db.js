@@ -8,6 +8,7 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS records_updated ON records (updated_at)`,
   `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, username TEXT NOT NULL UNIQUE, hash TEXT NOT NULL, role TEXT NOT NULL, staff_id TEXT, active INTEGER NOT NULL DEFAULT 1, created_at BIGINT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at BIGINT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS automation_log (id TEXT PRIMARY KEY, at BIGINT NOT NULL, rule TEXT NOT NULL, trig TEXT NOT NULL, ok INTEGER NOT NULL, detail TEXT)`,
 ];
 
 export async function openDb() {

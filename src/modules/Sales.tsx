@@ -6,11 +6,12 @@ import { money, fmtDate } from '../core/calc';
 import { lookup } from '../core/helpers';
 import { PageHeader, Empty, Tabs, SearchBox, Field, Modal, Stat, toast } from '../components/ui';
 import { useT } from '../core/i18n';
+import { QR, useDocQr } from '../plugins/hooks';
 
 type Line = { itemId: string; name: string; qty: number; price: number };
 
 export default function Sales() {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT();
+  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const qr = useDocQr();
   const [tab, setTab] = useState<'pos' | 'history'>('pos'); const [q, setQ] = useState('');
   const [cart, setCart] = useState<Line[]>([]); const [customerId, setCustomerId] = useState(''); const [discount, setDiscount] = useState(0); const [method, setMethod] = useState('Cash');
   const [receipt, setReceipt] = useState<Sale | null>(null);
@@ -70,7 +71,7 @@ export default function Sales() {
           <div style={{ textAlign: 'center' }}><b style={{ fontSize: 16 }}>{s.businessName}</b><div>{s.city} · {s.phone}</div>{s.vatNumber && <div>VATIN {s.vatNumber}</div>}<div>{receipt.number} · {fmtDate(receipt.date)}</div></div><hr />
           {receipt.lines.map((l) => <div key={l.itemId} className="flex between"><span>{l.qty}× {l.name}</span><span>{money(l.qty * l.price, s)}</span></div>)}<hr />
           {receipt.discount > 0 && <div className="flex between"><span>Discount</span><span>−{money(receipt.discount, s)}</span></div>}
-          <div className="flex between"><b>TOTAL (incl. VAT {receipt.vat}%)</b><b>{money(saleTotal(receipt), s)}</b></div><div>Paid by {receipt.method}</div><hr /><div style={{ textAlign: 'center' }}>Thank you!</div>
+          <div className="flex between"><b>TOTAL (incl. VAT {receipt.vat}%)</b><b>{money(saleTotal(receipt), s)}</b></div><div>Paid by {receipt.method}</div><hr /><div style={{ textAlign: 'center' }}>Thank you!{qr && <div style={{ marginTop: 8 }}><QR value={qr.url} size={90} caption={qr.caption} /></div>}</div>
         </div></div>
       </Modal>}
     </>

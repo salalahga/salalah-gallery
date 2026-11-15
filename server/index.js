@@ -7,6 +7,9 @@ import fs from 'node:fs';
 import { openDb, UPSERT, KV_SET } from './db.js';
 import { hashPassword, verifyPassword, signToken, readToken, cookieMaxAge, loginAllowed, loginFailed, loginOk } from './auth.js';
 import { COLLECTIONS, isCollection, canRead, canWrite, canDelete, redact, mergeProtected } from './permissions.js';
+import { createPlugins } from './plugins.js';
+import { createAutomations, DEFAULT_RULES } from './automations.js';
+import { buildIcs } from './ical.js';
 
 const PORT = Number(process.env.PORT) || 8787;
 const db = await openDb();
@@ -23,6 +26,8 @@ if (!SECRET) {
 // Monotonic clock so two writes in the same millisecond still sync in order.
 let lastTs = 0;
 const tick = () => (lastTs = Math.max(Date.now(), lastTs + 1));
+const plugins = createPlugins(db);
+const automations = createAutomations(db, plugins, { tick });
 
 const app = express();
 app.disable('x-powered-by');
@@ -130,6 +135,7 @@ app.put('/api/r/:col/:id', auth, wrap(async (req, res) => {
   after = mergeProtected(req.user.role, col, before, after);
   await db.run(UPSERT, [col, id, JSON.stringify(after), tick(), 0]);
   res.json({ ok: true });
+  void automations.onChange(col, before, after); // runs after the response; never blocks saving
 }));
 
 app.delete('/api/r/:col/:id', auth, wrap(async (req, res) => {
@@ -188,16 +194,65 @@ app.delete('/api/users/:id', auth, adminOnly, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---- plugins (owner only; secrets are returned masked) ----
+app.get('/api/plugins', auth, adminOnly, wrap(async (_req, res) => res.json({ config: await plugins.masked() })));
+app.put('/api/plugins/:id', auth, adminOnly, wrap(async (req, res) => {
+  if (!/^[a-z0-9-]+$/.test(req.params.id)) return res.status(400).json({ error: 'Bad plugin id' });
+  await plugins.setConfig(req.params.id, { ...(req.body || {}) });
+  res.json({ config: await plugins.masked() });
+}));
+app.post('/api/plugins/:id/test', auth, adminOnly, wrap(async (req, res) => {
+  const s = await db.get('SELECT value FROM kv WHERE key = ?', ['settings']);
+  const name = s ? JSON.parse(s.value).businessName : 'WoodWorks Pro';
+  try {
+    if (req.params.id === 'telegram') await plugins.telegram(`✅ ${name}: Telegram is connected.`);
+    else if (req.params.id === 'email') await plugins.email({ subject: `${name}: email is connected`, text: 'This is a test email from WoodWorks Pro.' });
+    else if (req.params.id === 'webhooks') await plugins.webhook('test', { message: 'Test from WoodWorks Pro', business: name });
+    else return res.status(400).json({ error: 'This plugin has no test' });
+    res.json({ ok: true });
+  } catch (e) { res.status(400).json({ error: e.message }); }
+}));
+
+// ---- automations (owner only) ----
+app.get('/api/automations', auth, adminOnly, wrap(async (_req, res) => res.json({ rules: await automations.rules(), triggers: automations.TRIGGERS })));
+app.put('/api/automations', auth, adminOnly, wrap(async (req, res) => {
+  const list = Array.isArray(req.body?.rules) ? req.body.rules : null;
+  if (!list) return res.status(400).json({ error: 'rules[] required' });
+  await automations.saveRules(list); res.json({ ok: true });
+}));
+app.post('/api/automations/defaults', auth, adminOnly, wrap(async (_req, res) => {
+  const cur = await automations.rules(); const names = new Set(cur.map((r) => r.name));
+  const add = DEFAULT_RULES.filter((r) => !names.has(r.name)).map((r) => ({ ...r, id: crypto.randomBytes(6).toString('hex') }));
+  await automations.saveRules([...cur, ...add]); res.json({ added: add.length });
+}));
+app.post('/api/automations/test', auth, adminOnly, wrap(async (req, res) => res.json({ results: await automations.test(req.body || {}) })));
+app.post('/api/automations/run-daily', auth, adminOnly, wrap(async (_req, res) => res.json({ ran: await automations.daily(true) })));
+app.get('/api/automations/log', auth, adminOnly, wrap(async (_req, res) => {
+  res.json({ log: (await db.all('SELECT * FROM automation_log ORDER BY at DESC LIMIT 200')).map((r) => ({ id: r.id, rule: r.rule, trigger: r.trig, detail: r.detail, at: Number(r.at), ok: !!Number(r.ok) })) });
+}));
+
+// ---- calendar feed (subscribe from Google Calendar / iPhone; secret link, read-only) ----
+app.get('/api/calendar/:token.ics', wrap(async (req, res) => {
+  const cfg = (await plugins.getConfig()).ical || {};
+  const a = Buffer.from(String(req.params.token)); const b = Buffer.from(String(cfg.token || ''));
+  if (!cfg.enabled || !cfg.token || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return res.status(404).end();
+  const get = async (c) => (await db.all('SELECT data FROM records WHERE col = ? AND deleted = 0', [c])).map((r) => JSON.parse(r.data));
+  const s = await db.get('SELECT value FROM kv WHERE key = ?', ['settings']);
+  const ics = buildIcs({ settings: s ? JSON.parse(s.value) : {}, jobs: await get('jobs'), tasks: await get('tasks'), invoices: await get('invoices'), customers: await get('customers'), staff: await get('staff') });
+  res.setHeader('Content-Type', 'text/calendar; charset=utf-8'); res.send(ics);
+}));
+
 app.use('/api', (_req, res) => res.status(404).json({ error: 'Not found' }));
 
 // ---- static app ----
 const dist = path.resolve(process.env.STATIC_DIR || 'dist');
 if (fs.existsSync(dist)) {
-  app.use(express.static(dist, { index: false, maxAge: '1h' }));
+  app.use(express.static(dist, { index: false, maxAge: '1h', setHeaders: (res, file) => { if (/sw\.js$|\.webmanifest$|index\.html$/.test(file)) res.setHeader('Cache-Control', 'no-cache'); } }));
   app.get(/.*/, (_req, res) => res.sendFile(path.join(dist, 'index.html')));
 }
 
 // eslint-disable-next-line no-unused-vars
 app.use((err, _req, res, _next) => { console.error(err); res.status(500).json({ error: 'Server error' }); });
 
+automations.start();
 app.listen(PORT, () => console.log(`WoodWorks Pro server on :${PORT} · database ${db.kind}`));

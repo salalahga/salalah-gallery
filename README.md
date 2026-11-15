@@ -22,6 +22,36 @@ An all-in-one app for a carpentry / CNC workshop: jobs, staff, payroll, quotatio
 | | **Website** | Auto-built business website (services, gallery, shop, contact, WhatsApp button), 4 themes, live preview, download `index.html` |
 | System | **Settings** | Business profile & logo, currency, VAT, work types & their fields, categories, payroll rules, integrations, backup/restore |
 
+## Plugins (all free)
+
+Open **Plugins** (owner only) to switch each one on.
+
+| Plugin | What it does | Cost |
+|---|---|---|
+| WhatsApp messages | One-tap messages for quotes, invoices, job updates, tasks, review requests. Templates are editable | Free (click-to-chat) |
+| Telegram alerts | Instant alerts to the owner and to staff (task assignments) | Free |
+| Email (Gmail / SMTP) | Alerts and daily summary from your own Gmail | Free (Gmail allows about 500 a day) |
+| Webhooks | Every event sent as signed JSON to n8n / Make / Zapier / Pipedream / Google Apps Script | Free (n8n self-hosted, Apps Script); Make/Zapier have free monthly limits |
+| Calendar feed (iCal) | Jobs, tasks and invoice due dates in Google/iPhone Calendar via a private link | Free |
+| Add-to-Google-Calendar buttons | On jobs and tasks | Free |
+| QR codes | On quotations, invoices and receipts (WhatsApp, website or a custom/payment link) | Free |
+| Job cards | Printable workshop-floor card with details, materials, stages and a QR code that opens the job | Free |
+| Google Maps directions | To customer and site addresses | Free |
+| Google review requests | Sends your review link on WhatsApp when a job is completed | Free |
+| Excel / Sheets export | CSV export of any list | Free |
+| Install as app (PWA) | Home-screen app with offline start | Free |
+
+Secrets such as bot tokens, SMTP passwords and webhook keys are stored **only on the server**. They are shown masked and are never sent to the browser in full.
+
+## Automations
+
+**Automations** (owner only) runs rules on the server around the clock: *when X happens → Telegram / email / webhook / create a task*.
+
+- **Triggers:** new job, job status changed or completed, task assigned or completed, quotation created or accepted, invoice created, payment received, sale, expense, low stock, new customer. Daily triggers: morning summary, overdue invoices, tasks due today, jobs due within 2 days. The time zone and the summary hour are set in Settings.
+- **Ready-made rules** are included and switched **off** until you enable them. Messages use `{{placeholders}}`, and every rule can be tested with sample data (▶).
+- An **activity log** shows what ran and why anything failed.
+- To add a trigger, fire it from `onChange` or `daily` in `server/automations.js` and add its label to `TRIGGERS`.
+
 ## Logins & online database
 
 The app has a small Node.js server (`server/`) that provides logins and an online database, so every phone and computer sees the same data.
@@ -79,7 +109,9 @@ New kinds of work (e.g. *Aluminium*, *Upholstery*) need **no code** — add them
 ## Project layout
 
 ```
-server/        Node server: API, logins, role permissions, Postgres/SQLite storage
+server/        Node server: API, logins, role permissions, Postgres/SQLite storage,
+               plugins (Telegram/email/webhooks), automations engine, iCal feed
+src/plugins/   plugin catalog, plugin hooks (QR, templates, calendar, CSV), PWA
 src/core/      types, store (sync + offline outbox), session, api, calculations, i18n, router, website generator
 src/components ui kit, document (quotation/invoice) editor & print layout
 src/modules/   one file per module + registry.tsx

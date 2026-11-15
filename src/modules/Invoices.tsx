@@ -8,9 +8,10 @@ import { statusMeta, lookup, waLink, daysFrom } from '../core/helpers';
 import { Modal, Field, PageHeader, Badge, Empty, Tabs, SearchBox, Stat, toast, confirmDelete } from '../components/ui';
 import { LinesEditor, DocView } from '../components/DocEditor';
 import { useT } from '../core/i18n';
+import { useWaText } from '../plugins/hooks';
 
 export default function Invoices() {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute();
+  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute(); const wa = useWaText();
   const [edit, setEdit] = useState<Partial<Invoice> | null>(null);
   const [view, setView] = useState<Invoice | null>(null);
   const [pay, setPay] = useState<{ inv: Invoice; amount: number; method: string } | null>(null);
@@ -29,7 +30,7 @@ export default function Invoices() {
     store.upsert('txns', { date: today(), kind: 'income', category: 'Job Payment', amount: pay.amount, method: pay.method, description: `Payment ${pay.inv.number} — ${L.customer(pay.inv.customerId)?.name}`, ref: pay.inv.number });
     setPay(null); toast('Payment recorded in accounts');
   };
-  const share = (x: Invoice) => { const c = L.customer(x.customerId); return waLink(c?.phone, `Dear ${c?.name},\nInvoice ${x.number} for "${x.title}"\nTotal: ${money(docTotals(x).total, s)}\nPaid: ${money(x.paid, s)}\nBalance due: ${money(invoiceBalance(x), s)}\nDue date: ${fmtDate(x.dueDate)}\n\nThank you,\n${s.businessName}`); };
+  const share = (x: Invoice) => { const c = L.customer(x.customerId); return waLink(c?.phone, wa('invoice', { customer: c?.name, number: x.number, title: x.title, total: money(docTotals(x).total, s), paid: money(x.paid, s), balance: money(invoiceBalance(x), s), due: fmtDate(x.dueDate), business: s.businessName, phone: s.phone })); };
   const totalDue = db.invoices.reduce((n, i) => n + Math.max(0, invoiceBalance(i)), 0);
   const overdue = db.invoices.filter((i) => invoiceBalance(i) > 0.001 && (daysFrom(i.dueDate) ?? 1) < 0);
   const collected = db.invoices.reduce((n, i) => n + (i.paid || 0), 0);

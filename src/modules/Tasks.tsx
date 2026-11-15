@@ -7,12 +7,14 @@ import { statusMeta, lookup, dueLabel, priorityTone, waLink } from '../core/help
 import { Modal, Field, Badge, PageHeader, Avatar, toast, confirmDelete } from '../components/ui';
 import { useT } from '../core/i18n';
 import { useRole, useUser } from '../core/session';
+import { useWaText, usePlugin, gcalLink } from '../plugins/hooks';
+import { CalendarPlus } from 'lucide-react';
 
 const COLS: TaskStatus[] = ['todo', 'doing', 'review', 'done'];
 
 export default function Tasks() {
   const db = useDB(); const L = lookup(db); const t = useT(); const { params } = useRoute();
-  const isStaff = useRole() === 'staff'; const me = useUser()?.staffId;
+  const isStaff = useRole() === 'staff'; const me = useUser()?.staffId; const wa = useWaText(); const gcal = usePlugin('gcal').enabled;
   const [who, setWho] = useState(isStaff && me ? me : 'all');
   const [edit, setEdit] = useState<Partial<Task> | null>(null);
   const [drag, setDrag] = useState<string | null>(null);
@@ -51,7 +53,8 @@ export default function Tasks() {
         <Modal open title={edit.id ? 'Edit task' : 'Assign task'} onClose={() => setEdit(null)}
           footer={<>
             {edit.id && !isStaff && <button className="btn danger ghost" onClick={() => { if (confirmDelete('this task')) { store.remove('tasks', edit.id!); setEdit(null); } }}><Trash2 size={15} />Delete</button>}
-            {staff?.phone && edit.title && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(staff.phone, `New task for you: ${edit.title}${job ? ` (${job.code} ${job.title})` : ''}. Due: ${edit.dueDate || '-'}. Priority: ${edit.priority}.${edit.notes ? '\n' + edit.notes : ''}`)}><MessageCircle size={15} />Send on WhatsApp</a>}
+            {staff?.phone && edit.title && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(staff.phone, wa('task', { title: edit.title, job: job ? ` (${job.code} ${job.title})` : '', due: edit.dueDate || '-', priority: edit.priority, notes: edit.notes ? '\n' + edit.notes : '' }))}><MessageCircle size={15} />Send on WhatsApp</a>}
+            {gcal && edit.title && edit.dueDate && <a className="btn ghost" target="_blank" rel="noreferrer" href={gcalLink(edit.title, edit.dueDate, [job ? `${job.code} ${job.title}` : '', staff?.name, edit.notes].filter(Boolean).join('\n'))}><CalendarPlus size={15} />Calendar</a>}
             <span className="spacer" /><button className="btn" onClick={() => setEdit(null)}>Cancel</button><button className="btn primary" onClick={save}>Save</button>
           </>}>
           <div className="form two">

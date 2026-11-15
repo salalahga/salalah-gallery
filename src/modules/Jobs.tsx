@@ -8,6 +8,8 @@ import { statusMeta, lookup, dueLabel, priorityTone, waLink } from '../core/help
 import { Modal, Field, Badge, PageHeader, SearchBox, Tabs, Avatar, Progress, Empty, toast, confirmDelete } from '../components/ui';
 import { useT } from '../core/i18n';
 import { useCanWrite } from '../core/session';
+import { usePlugin, useWaText, gcalLink, mapsLink, QR } from '../plugins/hooks';
+import { CalendarPlus, MapPin, Star, Printer } from 'lucide-react';
 
 const STATUSES: JobStatus[] = ['enquiry', 'design', 'production', 'finishing', 'installation', 'completed'];
 
@@ -97,6 +99,9 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
   const tasks = db.tasks.filter((x) => x.jobId === job.id);
   const cust = L.customer(job.customerId);
   const materials = job.materials || [];
+  const wa = useWaText(); const gcal = usePlugin('gcal').enabled; const maps = usePlugin('maps').enabled; const review = usePlugin('reviews'); const jobcard = usePlugin('jobcard').enabled;
+  const [card, setCard] = useState(false);
+  const site = job.details?.['Site address'] || cust?.address;
 
   const issueMaterials = () => {
     for (const m of materials) { const it = L.item(m.itemId); if (it) store.upsert('items', { ...it, qty: it.qty - m.qty }); }
@@ -114,9 +119,16 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
       footer={readOnly ? <button className="btn" onClick={onClose}>Close</button> : <>
         {exists && <button className="btn danger ghost" onClick={() => { if (confirmDelete('this job')) { store.remove('jobs', job.id!); onClose(); } }}><Trash2 size={15} />Delete</button>}
         {exists && <button className="btn ghost" onClick={makeInvoice}><Receipt size={15} />Create invoice</button>}
-        {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, `Hello ${cust.name}, update on your order ${job.code} "${job.title}": status is now ${statusMeta[job.status!].label}. — ${s.businessName}`)}><MessageCircle size={15} />WhatsApp update</a>}
+        {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('jobUpdate', { customer: cust.name, code: job.code, title: job.title, status: statusMeta[job.status!].label, business: s.businessName }))}><MessageCircle size={15} />WhatsApp update</a>}
         <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={onSave}>Save job</button>
       </>}>
+      {exists && (jobcard || gcal || (maps && site) || (review.enabled && job.status === 'completed')) && <div className="chips" style={{ marginBottom: 14 }}>
+        {jobcard && <button className="btn sm" onClick={() => setCard(true)}><Printer size={14} />Job card</button>}
+        {gcal && job.dueDate && <a className="btn sm" target="_blank" rel="noreferrer" href={gcalLink(`${job.code} ${job.title}`, job.dueDate, `Customer: ${cust?.name || '-'}\n${wt?.name || ''}`, site || '')}><CalendarPlus size={14} />Add to calendar</a>}
+        {maps && site && <a className="btn sm" target="_blank" rel="noreferrer" href={mapsLink(site)}><MapPin size={14} />Directions</a>}
+        {!readOnly && review.enabled && job.status === 'completed' && cust?.phone && <a className="btn sm" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('review', { customer: cust.name, title: job.title, business: s.businessName, link: review.link || '' }))}><Star size={14} />Ask for Google review</a>}
+      </div>}
+      {card && <JobCard job={job} onClose={() => setCard(false)} />}
       <fieldset className="form" disabled={readOnly}>
         <Field label="Job title" span={2}><input autoFocus value={job.title || ''} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Kitchen cabinets — Villa 12" /></Field>
         <Field label="Job code"><input value={job.code || ''} onChange={(e) => set({ code: e.target.value })} /></Field>
@@ -165,6 +177,33 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
           </div>
         </>}
       </fieldset>
+    </Modal>
+  );
+}
+
+function JobCard({ job, onClose }: { job: Partial<Job>; onClose: () => void }) {
+  const db = useDB(); const s = db.settings; const L = lookup(db);
+  const wt = L.workType(job.workTypeId); const cust = L.customer(job.customerId);
+  const link = `${window.location.origin}/#/jobs?id=${job.id}`;
+  return (
+    <Modal open title={`Job card ${job.code}`} onClose={onClose} footer={<><button className="btn" onClick={onClose}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print</button></>}>
+      <div className="print-area"><div className="doc jobcard">
+        <div className="doc-head"><div><div className="big">{job.code}</div><h2 style={{ margin: '4px 0' }}>{job.title}</h2><div>{wt?.name || 'General'} · Priority: <b>{job.priority}</b></div></div>
+          <QR value={link} size={110} caption="Scan to open this job" /></div>
+        <table style={{ width: '100%' }}><tbody>
+          <tr><td>Customer</td><td><b>{cust?.name || '—'}</b> {cust?.phone}</td></tr>
+          <tr><td>Site / address</td><td>{job.details?.['Site address'] || cust?.address || '—'}</td></tr>
+          <tr><td>Start → Due</td><td>{fmtDate(job.startDate)} → <b>{fmtDate(job.dueDate)}</b></td></tr>
+          <tr><td>Team</td><td>{(job.staffIds || []).map((id) => L.staff(id)?.name).filter(Boolean).join(', ') || '—'}</td></tr>
+          {Object.entries(job.details || {}).filter(([, v]) => v).map(([k, v]) => <tr key={k}><td>{k}</td><td>{v}</td></tr>)}
+        </tbody></table>
+        {(job.materials || []).length > 0 && <><h3 style={{ marginTop: 18 }}>Materials</h3><table style={{ width: '100%' }}><tbody>{job.materials!.map((m, i) => { const it = L.item(m.itemId); return <tr key={i}><td className="checks"><span />{it?.name} {it?.thickness}</td><td className="num">{m.qty} {it?.unit}</td></tr>; })}</tbody></table></>}
+        <h3 style={{ marginTop: 18 }}>Stages</h3>
+        <div className="checks" style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>{['Design OK', 'Cutting', 'CNC', 'Assembly', 'Finishing', 'QC', 'Delivery', 'Installed'].map((x) => <label key={x}><span />{x}</label>)}</div>
+        {job.notes && <div className="doc-terms"><b>Notes</b><br />{job.notes}</div>}
+        <div className="doc-sign"><div>Supervisor</div><div>Customer sign-off</div></div>
+        <p style={{ fontSize: 11, color: '#888', marginTop: 16 }}>{s.businessName} · printed {new Date().toLocaleDateString('en-GB')}</p>
+      </div></div>
     </Modal>
   );
 }
