@@ -4,14 +4,13 @@
   --green: #15803d; --red: #c2410c; --blue: #2563eb; --violet: #7c3aed;
   --side: #2b1d13; --side-ink: #e9dccd; --side-mute: #a48f7c;
   --radius: 14px; --shadow: 0 1px 2px rgba(60, 40, 20, .05), 0 6px 24px -8px rgba(60, 40, 20, .12);
-  font-family: Inter, 'Noto Sans Malayalam', system-ui, sans-serif; color: var(--ink); background: var(--bg);
+  font-family: Inter, system-ui, sans-serif; color: var(--ink); background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 :root[data-theme='dark'] {
   --bg: #15110d; --panel: #1e1813; --panel-2: #241d17; --ink: #f2e9df; --ink-2: #c3b3a3; --ink-3: #8c7b6b; --line: #33291f;
   --wood: #e0a458; --wood-2: #f0bf7c; --side: #0f0c09; --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);
 }
-html[lang='ml'] body { font-family: 'Noto Sans Malayalam', Inter, sans-serif; }
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); }
 button, input, select, textarea { font: inherit; color: inherit; }

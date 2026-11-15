@@ -1,6 +1,6 @@
 # WoodWorks Pro — Carpentry Workshop Manager
 
-An all-in-one app for a carpentry / CNC workshop: jobs, staff, payroll, quotations, invoices, accounts, stock, product sales, social media and website. Runs in the browser, works on phone and desktop, supports **English / മലയാളം** and light/dark mode.
+An all-in-one app for a carpentry / CNC workshop: jobs, staff, payroll, quotations, invoices, accounts, stock, product sales, social media and website. Runs in the browser, works on phone and desktop, has an English interface and light/dark mode.
 
 ## Modules
 

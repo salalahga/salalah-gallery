@@ -36,7 +36,6 @@ export default function SettingsPage() {
         <Field label="VAT %"><input type="number" value={s.vatRate} onChange={(e) => set({ vatRate: +e.target.value })} /></Field>
         <Field label="VAT number"><input value={s.vatNumber} onChange={(e) => set({ vatNumber: e.target.value })} /></Field>
         <Field label="CR / licence number"><input value={s.crNumber} onChange={(e) => set({ crNumber: e.target.value })} /></Field>
-        <Field label="Default language"><select value={s.lang} onChange={(e) => set({ lang: e.target.value as 'en' | 'ml' })}><option value="en">English</option><option value="ml">മലയാളം (Malayalam)</option></select></Field>
         <Field label="Time zone"><input value={s.timezone || 'Asia/Muscat'} onChange={(e) => set({ timezone: e.target.value })} placeholder="Asia/Muscat" /></Field>
         <Field label="Daily summary time (hour, 0–23)"><input type="number" min={0} max={23} value={s.dailyHour ?? 8} onChange={(e) => set({ dailyHour: +e.target.value })} /></Field>
         <div className="muted" style={{ alignSelf: 'end' }}>Telegram, email, QR codes and more: <a href="#/plugins" style={{ textDecoration: 'underline' }}>Plugins</a></div>

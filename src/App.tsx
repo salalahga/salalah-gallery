@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Menu, Moon, Sun, Languages, Plus, Search, LogOut, KeyRound, Cloud, CloudOff, RefreshCw } from 'lucide-react';
+import { Menu, Moon, Sun, Plus, Search, LogOut, KeyRound, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { modulesFor } from './modules/registry';
 import { useRoute, go } from './core/router';
 import { store, useSettings, useSync } from './core/store';
-import { useT, useLang, setLang } from './core/i18n';
+import { useT } from './core/i18n';
 import { session, useSession, useRole, useUser } from './core/session';
 import { api } from './core/api';
 import { Toaster, Modal, Field, Avatar, toast } from './components/ui';
@@ -56,7 +56,6 @@ function Workspace() {
   const { page } = useRoute();
   const s = useSettings();
   const t = useT();
-  const lang = useLang();
   const role = useRole();
   const modules = modulesFor(role);
   const [open, setOpen] = useState(false);
@@ -65,7 +64,7 @@ function Workspace() {
   const [q, setQ] = useState('');
 
   useEffect(() => { document.documentElement.dataset.theme = dark ? 'dark' : 'light'; try { localStorage.setItem('ww-theme', dark ? 'dark' : 'light'); } catch { /* */ } }, [dark]);
-  useEffect(() => { document.documentElement.lang = lang; }, [lang]);
+  useEffect(() => { document.documentElement.lang = 'en'; }, []);
   useEffect(() => { setOpen(false); window.scrollTo(0, 0); }, [page]);
   useEffect(() => {
     const h = (e: KeyboardEvent) => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setPalette(true); } };
@@ -114,7 +113,6 @@ function Workspace() {
               <button className="btn primary sm"><Plus size={16} /><span className="hide-sm">Quick add</span></button>
               <div className="quick-menu">{quick.map((x) => <button key={x.label} onClick={x.go}>{x.label}</button>)}</div>
             </div>}
-            <button className="icon-btn" title="Malayalam / English" onClick={() => setLang(lang === 'en' ? 'ml' : 'en')}><Languages size={18} /><small>{lang === 'en' ? 'മ' : 'EN'}</small></button>
             <button className="icon-btn" title="Theme" onClick={() => setDark(!dark)}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
             <UserMenu />
           </div>

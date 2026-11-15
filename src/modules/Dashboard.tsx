@@ -1,13 +1,13 @@
 import { Hammer, Wallet, AlertTriangle, TrendingUp, FileText, ShoppingCart, Plus, Receipt } from 'lucide-react';
 import { useDB } from '../core/store';
-import { useT, useLang } from '../core/i18n';
+import { useT } from '../core/i18n';
 import { docTotals, finance, invoiceBalance, lastMonths, money, monthLabel } from '../core/calc';
 import { statusMeta, lookup, dueLabel, priorityTone } from '../core/helpers';
 import { go } from '../core/router';
 import { Stat, BarChart, Donut, Badge, Avatar, Progress, Empty } from '../components/ui';
 
 export default function Dashboard() {
-  const db = useDB(); const t = useT(); const lang = useLang(); const s = db.settings; const L = lookup(db);
+  const db = useDB(); const t = useT(); const s = db.settings; const L = lookup(db);
   const month = new Date().toISOString().slice(0, 7);
   const f = finance(db, month);
   const active = db.jobs.filter((j) => !['completed', 'cancelled'].includes(j.status));
@@ -24,7 +24,7 @@ export default function Dashboard() {
     <>
       <div className="hero">
         <h1>{t(greet)} 👋</h1>
-        <p>{new Date().toLocaleDateString(lang === 'ml' ? 'ml-IN' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {active.length} active jobs · {db.tasks.filter((x) => x.status !== 'done').length} open tasks</p>
+        <p>{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {active.length} active jobs · {db.tasks.filter((x) => x.status !== 'done').length} open tasks</p>
         <div className="hero-actions">
           <button className="btn primary" onClick={() => go('jobs', { new: '1' })}><Plus size={16} />{t('New job')}</button>
           <button className="btn" onClick={() => go('quotations', { new: '1' })}><FileText size={16} />{t('New quotation')}</button>

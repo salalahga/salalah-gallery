@@ -58,7 +58,7 @@ export interface SocialPost extends Base { title: string; caption: string; platf
 
 export interface Settings {
   businessName: string; tagline: string; phone: string; whatsapp: string; email: string; address: string; city: string; country: string;
-  currency: string; vatRate: number; vatNumber: string; crNumber: string; logo?: string; lang: 'en' | 'ml';
+  currency: string; vatRate: number; vatNumber: string; crNumber: string; logo?: string; lang?: 'en';
   workTypes: WorkType[]; expenseCategories: string[]; incomeCategories: string[]; roles: string[]; quoteTerms: string;
   workHoursPerDay: number; overtimeMultiplier: number; workingDaysPerMonth: number;
   website: { hero: string; about: string; theme: string; gallery: string[]; showProducts: boolean; mapUrl: string };

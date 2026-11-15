@@ -3,15 +3,11 @@ import { LogIn, ShieldCheck, Loader2 } from 'lucide-react';
 import { session } from '../core/session';
 import { hasLocalData, localSnapshot } from '../core/store';
 import { seed } from '../core/seed';
-import { useLang } from '../core/i18n';
 
 const T = {
   en: { welcome: 'Welcome back', sub: 'Log in to your workshop', user: 'Username', pass: 'Password', login: 'Log in', expired: 'Your session expired. Please log in again.',
     setupTitle: 'Set up your workshop', setupSub: 'Create the owner account. You can add managers and staff logins later in Settings → Users.',
     name: 'Your name', confirm: 'Confirm password', start: 'Start with', mine: 'Data already on this device', demo: 'Demo data (to explore)', empty: 'Empty — I will add my own', create: 'Create owner account', mismatch: 'Passwords do not match', short: 'Password must be at least 6 characters' },
-  ml: { welcome: 'സ്വാഗതം', sub: 'നിങ്ങളുടെ വർക്ക്ഷോപ്പിലേക്ക് ലോഗിൻ ചെയ്യുക', user: 'യൂസർനെയിം', pass: 'പാസ്‌വേഡ്', login: 'ലോഗിൻ', expired: 'സെഷൻ കഴിഞ്ഞു. വീണ്ടും ലോഗിൻ ചെയ്യുക.',
-    setupTitle: 'വർക്ക്ഷോപ്പ് സെറ്റപ്പ്', setupSub: 'ഉടമയുടെ അക്കൗണ്ട് ഉണ്ടാക്കുക. മാനേജർ, സ്റ്റാഫ് ലോഗിനുകൾ പിന്നീട് Settings → Users-ൽ ചേർക്കാം.',
-    name: 'നിങ്ങളുടെ പേര്', confirm: 'പാസ്‌വേഡ് വീണ്ടും', start: 'തുടങ്ങേണ്ടത്', mine: 'ഈ ഉപകരണത്തിലെ ഡാറ്റ', demo: 'ഡെമോ ഡാറ്റ', empty: 'ശൂന്യം — ഞാൻ ചേർക്കാം', create: 'അക്കൗണ്ട് ഉണ്ടാക്കുക', mismatch: 'പാസ്‌വേഡുകൾ ഒരുപോലെയല്ല', short: 'പാസ്‌വേഡ് കുറഞ്ഞത് 6 അക്ഷരം' },
 };
 
 function Shell({ children }: { children: React.ReactNode }) {
@@ -28,7 +24,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 }
 
 export function Login({ expired }: { expired?: boolean }) {
-  const t = T[useLang()];
+  const t = T.en;
   const [u, setU] = useState(''); const [p, setP] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
@@ -49,7 +45,7 @@ export function Login({ expired }: { expired?: boolean }) {
 }
 
 export function Setup() {
-  const t = T[useLang()];
+  const t = T.en;
   const local = hasLocalData();
   const [f, setF] = useState({ name: '', username: 'owner', password: '', confirm: '', start: local ? 'mine' : 'empty' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);

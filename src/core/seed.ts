@@ -5,7 +5,7 @@ const ts = new Date().toISOString();
 
 export const defaultSettings: Settings = {
   businessName: 'Teraz Investment L.L.C', tagline: 'Carpentry, CNC & signboard works', phone: '+968 9808 2291', whatsapp: '96898082291',
-  email: '', address: 'P.O. Box 811, Postal Code 215', city: 'Salalah', country: 'Oman', currency: 'OMR', vatRate: 0, vatNumber: '', crNumber: '1360908', lang: 'en',
+  email: '', address: 'P.O. Box 811, Postal Code 215', city: 'Salalah', country: 'Oman', currency: 'OMR', vatRate: 0, vatNumber: '', crNumber: '1360908',
   logo: '/teraz-logo.png', logoLight: '/teraz-logo-light.png', poBox: 'P.O. Box 811, Postal Code 215',
   paymentInfo: 'Payment Mode - Cash or Cheque\nBank cheque can be issued in the name of Teraz Investment LLC\nBank Account Name: Teraz Investment LLC\nBank Name: Bank Muscat\nAccount No: 0423057913090018\nIBAN: OM400270423057913090018',
   invoicePrefix: '', invoiceStart: 1212,
