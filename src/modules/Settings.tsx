@@ -4,6 +4,7 @@ import { store, useDB, exportBackup, uid } from '../core/store';
 import type { WorkType, DB } from '../core/types';
 import { PageHeader, Field, Tabs, toast, Badge } from '../components/ui';
 import { useT } from '../core/i18n';
+import Users from './Users';
 
 const INTEGRATIONS = [
   { name: 'WhatsApp', area: 'Customers & staff', status: 'Built in', desc: 'Send quotations, invoices, job updates and task assignments as WhatsApp messages.' },
@@ -18,17 +19,17 @@ const INTEGRATIONS = [
 
 export default function SettingsPage() {
   const db = useDB(); const s = db.settings; const t = useT();
-  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'integrations' | 'data'>('business');
+  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'users' | 'integrations' | 'data'>('business');
   const fileRef = useRef<HTMLInputElement>(null);
   const set = store.setSettings;
   const setWT = (i: number, p: Partial<WorkType>) => set({ workTypes: s.workTypes.map((w, k) => (k === i ? { ...w, ...p } : w)) });
-  const restore = (f: File) => { const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(String(r.result)) as DB; if (!d.settings) throw 0; store.replace(d); toast('Backup restored'); } catch { toast('Invalid backup file'); } }; r.readAsText(f); };
+  const restore = (f: File) => { const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(String(r.result)) as DB; if (!d.settings) throw 0; store.replace(d).then(() => toast('Backup restored'), (e) => toast(e.message)); } catch { toast('Invalid backup file'); } }; r.readAsText(f); };
   const logo = (f: File) => { const r = new FileReader(); r.onload = () => set({ logo: String(r.result) }); r.readAsDataURL(f); };
 
   return (
     <>
       <PageHeader title={t('Settings')} sub="Business profile, work types, lists, integrations and backup." />
-      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'integrations', label: 'Integrations' }, { id: 'data', label: 'Backup' }]} /></div>
+      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'users', label: 'Users & logins' }, { id: 'integrations', label: 'Integrations' }, { id: 'data', label: 'Backup' }]} /></div>
 
       {tab === 'business' && <div className="card"><div className="form">
         <Field label="Business name" span={2}><input value={s.businessName} onChange={(e) => set({ businessName: e.target.value })} /></Field>
@@ -44,7 +45,7 @@ export default function SettingsPage() {
         <Field label="VAT %"><input type="number" value={s.vatRate} onChange={(e) => set({ vatRate: +e.target.value })} /></Field>
         <Field label="VAT number"><input value={s.vatNumber} onChange={(e) => set({ vatNumber: e.target.value })} /></Field>
         <Field label="CR / licence number"><input value={s.crNumber} onChange={(e) => set({ crNumber: e.target.value })} /></Field>
-        <Field label="Language"><select value={s.lang} onChange={(e) => set({ lang: e.target.value as 'en' | 'ml' })}><option value="en">English</option><option value="ml">മലയാളം (Malayalam)</option></select></Field>
+        <Field label="Default language"><select value={s.lang} onChange={(e) => set({ lang: e.target.value as 'en' | 'ml' })}><option value="en">English</option><option value="ml">മലയാളം (Malayalam)</option></select></Field>
         <Field label="Default quotation terms" span={3}><textarea value={s.quoteTerms} onChange={(e) => set({ quoteTerms: e.target.value })} /></Field>
       </div></div>}
 
@@ -83,12 +84,14 @@ export default function SettingsPage() {
         <p className="muted" style={{ marginTop: 14 }}>“Available via Claude” connectors work by asking Claude, e.g. “sync this month’s invoices to QuickBooks” or “publish my website to Netlify”. Live in-app sync needs a small server and your account keys — the module system is ready for it.</p>
       </div>}
 
+      {tab === 'users' && <Users />}
+
       {tab === 'data' && <div className="grid g3">
-        <div className="card"><h3>Backup</h3><p className="muted">Data is stored in this browser. Download a backup regularly.</p><button className="btn primary" onClick={exportBackup}><Download size={16} />Download backup</button></div>
+        <div className="card"><h3>Backup</h3><p className="muted">{store.mode === 'server' ? 'Data is stored in the online database. A backup file is still a good safety copy.' : 'Data is stored in this browser. Download a backup regularly.'}</p><button className="btn primary" onClick={exportBackup}><Download size={16} />Download backup</button></div>
         <div className="card"><h3>Restore</h3><p className="muted">Load a backup file (replaces current data).</p><input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} /><button className="btn" onClick={() => fileRef.current?.click()}><Upload size={16} />Restore backup</button></div>
         <div className="card"><h3>Start fresh</h3><p className="muted">Remove demo data and start with your own.</p><div className="flex wrap">
-          <button className="btn danger" onClick={() => window.confirm('Delete ALL records and keep settings defaults?') && (store.reset(true), toast('All data cleared'))}><Trash2 size={16} />Clear all</button>
-          <button className="btn" onClick={() => window.confirm('Reload demo data?') && (store.reset(false), toast('Demo data loaded'))}><RotateCcw size={16} />Demo data</button></div></div>
+          <button className="btn danger" onClick={() => window.confirm('Delete ALL records and keep settings defaults?') && store.reset(true).then(() => toast('All data cleared'), (e) => toast(e.message))}><Trash2 size={16} />Clear all</button>
+          <button className="btn" onClick={() => window.confirm('Reload demo data?') && store.reset(false).then(() => toast('Demo data loaded'), (e) => toast(e.message))}><RotateCcw size={16} />Demo data</button></div></div>
       </div>}
     </>
   );

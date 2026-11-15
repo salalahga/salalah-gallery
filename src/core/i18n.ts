@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from 'react';
 import { useSettings } from './store';
 
 const ml: Record<string, string> = {
@@ -10,7 +11,17 @@ const ml: Record<string, string> = {
   'New job': 'പുതിയ വർക്ക്', 'New quotation': 'പുതിയ കൊട്ടേഷൻ', 'New sale': 'പുതിയ വിൽപ്പന', 'Add expense': 'ചെലവ് ചേർക്കുക',
 };
 
+// Language is chosen per device (each staff member can pick theirs); Settings holds the default.
+const LKEY = 'ww-lang';
+const lsubs = new Set<() => void>();
+const readLang = () => { try { return localStorage.getItem(LKEY) as 'en' | 'ml' | null; } catch { return null; } };
+export function setLang(l: 'en' | 'ml') { try { localStorage.setItem(LKEY, l); } catch { /* */ } lsubs.forEach((f) => f()); }
+export function useLang(): 'en' | 'ml' {
+  const def = useSettings().lang;
+  return useSyncExternalStore((f) => { lsubs.add(f); return () => lsubs.delete(f); }, readLang) || def || 'en';
+}
+
 export function useT() {
-  const { lang } = useSettings();
+  const lang = useLang();
   return (s: string) => (lang === 'ml' && ml[s] ? ml[s] : s);
 }

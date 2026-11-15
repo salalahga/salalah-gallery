@@ -29,6 +29,10 @@ export const defaultSettings: Settings = {
   },
 };
 
+export function emptyDB(): Omit<DB, 'settings'> {
+  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [] };
+}
+
 export function seed(): DB {
   return {
     settings: structuredClone(defaultSettings),

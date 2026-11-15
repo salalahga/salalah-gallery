@@ -7,6 +7,7 @@ import { money, fmtDate } from '../core/calc';
 import { statusMeta, lookup, dueLabel, priorityTone, waLink } from '../core/helpers';
 import { Modal, Field, Badge, PageHeader, SearchBox, Tabs, Avatar, Progress, Empty, toast, confirmDelete } from '../components/ui';
 import { useT } from '../core/i18n';
+import { useCanWrite } from '../core/session';
 
 const STATUSES: JobStatus[] = ['enquiry', 'design', 'production', 'finishing', 'installation', 'completed'];
 
@@ -15,7 +16,7 @@ export function blankJob(code: string, workTypeId?: string): Partial<Job> {
 }
 
 export default function Jobs() {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT();
+  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const can = useCanWrite()('jobs');
   const { params } = useRoute();
   const [view, setView] = useState<'board' | 'list'>('board');
   const [type, setType] = useState('all');
@@ -47,7 +48,7 @@ export default function Jobs() {
       <PageHeader title={t('Jobs')} sub="Track every work order — CNC, carpentry, board work, polish and installation."
         actions={<>
           <div className="tabs"><button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}><LayoutGrid size={15} />Board</button><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}><List size={15} />List</button></div>
-          <button className="btn primary" onClick={() => setEdit(blankJob(newCode(), type !== 'all' ? type : undefined))}><Plus size={16} />{t('New job')}</button>
+          {can && <button className="btn primary" onClick={() => setEdit(blankJob(newCode(), type !== 'all' ? type : undefined))}><Plus size={16} />{t('New job')}</button>}
         </>} />
       <div className="toolbar">
         <Tabs value={type} onChange={setType} tabs={[{ id: 'all', label: 'All work', count: db.jobs.length }, ...s.workTypes.map((w) => ({ id: w.id, label: w.name, count: db.jobs.filter((j) => j.workTypeId === w.id).length }))]} />
@@ -60,7 +61,7 @@ export default function Jobs() {
             <div key={st} className={`kcol ${over === st ? 'over' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(st); }} onDragLeave={() => setOver(null)} onDrop={() => { if (drag) moveTo(drag, st); setDrag(null); setOver(null); }}>
               <div className="kcol-head"><span className="flex"><span className="dot" style={{ background: statusMeta[st].color }} />{statusMeta[st].label}</span><span className="muted">{items.length}</span></div>
               {items.map((j) => { const wt = L.workType(j.workTypeId); const due = dueLabel(j.dueDate); return (
-                <div key={j.id} className="kcard" draggable onDragStart={() => setDrag(j.id)} onClick={() => setEdit(structuredClone(j))} style={{ borderTop: `3px solid ${wt?.color || 'var(--line)'}` }}>
+                <div key={j.id} className="kcard" draggable={can} onDragStart={() => setDrag(j.id)} onClick={() => setEdit(structuredClone(j))} style={{ borderTop: `3px solid ${wt?.color || 'var(--line)'}` }}>
                   <div className="flex between"><Badge color={wt?.color}>{wt?.name || 'General'}</Badge><Badge tone={priorityTone[j.priority]}>{j.priority}</Badge></div>
                   <div className="ktitle">{j.title}</div>
                   <div className="muted">{j.code} · {L.customer(j.customerId)?.name || 'No customer'}</div>
@@ -78,17 +79,17 @@ export default function Jobs() {
                 <td><b>{j.title}</b><div className="muted">{j.code}</div></td><td><Badge color={wt?.color}>{wt?.name || '—'}</Badge></td>
                 <td>{L.customer(j.customerId)?.name || '—'}</td><td><Badge tone={statusMeta[j.status].tone}>{statusMeta[j.status].label}</Badge></td>
                 <td><div className="avatars">{j.staffIds.map((id) => { const p = L.staff(id); return p && <Avatar key={id} name={p.name} color={p.color} size={26} />; })}</div></td>
-                <td>{fmtDate(j.dueDate)}</td><td className="num">{money(j.value, s)}</td>
+                <td>{fmtDate(j.dueDate)}</td><td className="num">{j.value === undefined ? '—' : money(j.value, s)}</td>
               </tr>); })}</tbody></table></div> : <Empty title="No jobs found" hint="Create your first work order." />}
         </div>
       )}
 
-      {edit && <JobForm job={edit} setJob={setEdit} onSave={save} onClose={() => setEdit(null)} />}
+      {edit && <JobForm job={edit} setJob={setEdit} onSave={save} onClose={() => setEdit(null)} readOnly={!can} />}
     </>
   );
 }
 
-function JobForm({ job, setJob, onSave, onClose }: { job: Partial<Job>; setJob: (j: Partial<Job>) => void; onSave: () => void; onClose: () => void }) {
+function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>; setJob: (j: Partial<Job>) => void; onSave: () => void; onClose: () => void; readOnly?: boolean }) {
   const db = useDB(); const s = db.settings; const L = lookup(db);
   const wt = L.workType(job.workTypeId);
   const set = (p: Partial<Job>) => setJob({ ...job, ...p });
@@ -110,13 +111,13 @@ function JobForm({ job, setJob, onSave, onClose }: { job: Partial<Job>; setJob: 
 
   return (
     <Modal open wide title={exists ? `${job.code} · Edit job` : 'New job'} onClose={onClose}
-      footer={<>
+      footer={readOnly ? <button className="btn" onClick={onClose}>Close</button> : <>
         {exists && <button className="btn danger ghost" onClick={() => { if (confirmDelete('this job')) { store.remove('jobs', job.id!); onClose(); } }}><Trash2 size={15} />Delete</button>}
         {exists && <button className="btn ghost" onClick={makeInvoice}><Receipt size={15} />Create invoice</button>}
         {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, `Hello ${cust.name}, update on your order ${job.code} "${job.title}": status is now ${statusMeta[job.status!].label}. — ${s.businessName}`)}><MessageCircle size={15} />WhatsApp update</a>}
         <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={onSave}>Save job</button>
       </>}>
-      <div className="form">
+      <fieldset className="form" disabled={readOnly}>
         <Field label="Job title" span={2}><input autoFocus value={job.title || ''} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Kitchen cabinets — Villa 12" /></Field>
         <Field label="Job code"><input value={job.code || ''} onChange={(e) => set({ code: e.target.value })} /></Field>
         <Field label="Work type">
@@ -125,7 +126,7 @@ function JobForm({ job, setJob, onSave, onClose }: { job: Partial<Job>; setJob: 
         <Field label="Customer">
           <select value={job.customerId || ''} onChange={(e) => set({ customerId: e.target.value })}><option value="">— Select —</option>{db.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         </Field>
-        <Field label={`Job value (${s.currency})`}><input type="number" value={job.value ?? 0} onChange={(e) => set({ value: +e.target.value })} /></Field>
+        {!readOnly && <Field label={`Job value (${s.currency})`}><input type="number" value={job.value ?? 0} onChange={(e) => set({ value: +e.target.value })} /></Field>}
         <Field label="Status"><select value={job.status} onChange={(e) => set({ status: e.target.value as JobStatus })}>{[...STATUSES, 'cancelled'].map((x) => <option key={x} value={x}>{statusMeta[x].label}</option>)}</select></Field>
         <Field label="Priority"><select value={job.priority} onChange={(e) => set({ priority: e.target.value as Job['priority'] })}>{['low', 'normal', 'high', 'urgent'].map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label={`Progress — ${job.progress || 0}%`}><input type="range" min={0} max={100} step={5} value={job.progress || 0} onChange={(e) => set({ progress: +e.target.value })} style={{ padding: 0 }} /></Field>
@@ -163,7 +164,7 @@ function JobForm({ job, setJob, onSave, onClose }: { job: Partial<Job>; setJob: 
             <button className="btn sm" onClick={() => go('tasks', { new: '1', job: job.id! })}><Plus size={14} />Assign task</button>
           </div>
         </>}
-      </div>
+      </fieldset>
     </Modal>
   );
 }
