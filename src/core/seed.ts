@@ -9,6 +9,7 @@ export const defaultSettings: Settings = {
   logo: '/teraz-logo.png', logoLight: '/teraz-logo-light.png', poBox: 'P.O. Box 811, Postal Code 215',
   paymentInfo: 'Payment Mode - Cash or Cheque\nBank cheque can be issued in the name of Teraz Investment LLC\nBank Account Name: Teraz Investment LLC\nBank Name: Bank Muscat\nAccount No: 0423057913090018\nIBAN: OM400270423057913090018',
   invoicePrefix: '', invoiceStart: 1212,
+  businessNameAr: 'تيراز للاستثمار ش.م.م', addressAr: 'ص.ب ٨١١، الرمز البريدي ٢١٥، صلالة، سلطنة عمان', arabicOnDocs: true, docExpiryDays: 30,
   workTypes: [
     { id: 'wt-cnc', name: 'CNC Work', color: '#2563eb', unit: 'sheet', rate: 25, fields: ['Design file', 'Material', 'Sheet size', 'Thickness (mm)', 'Machine hours', 'Bit / tool'] },
     { id: 'wt-carp', name: 'Carpentry', color: '#b45309', unit: 'job', rate: 0, fields: ['Item type', 'Dimensions (W×H×D)', 'Wood type', 'Hardware', 'Site address'] },
@@ -35,7 +36,7 @@ export const defaultSettings: Settings = {
 };
 
 export function emptyDB(): Omit<DB, 'settings'> {
-  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [] };
+  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [] };
 }
 
 export function seed(): DB {
@@ -47,7 +48,7 @@ export function seed(): DB {
       { id: 'c3', createdAt: ts, name: 'Fatima Al Kathiri', phone: '+968 9988 7766', address: 'Awqad', type: 'Individual' },
     ],
     staff: [
-      { id: 's1', createdAt: ts, name: 'Rajesh Kumar', role: 'Carpenter', phone: '+968 9500 1111', nationality: 'Indian', salaryType: 'monthly', rate: 220, allowance: 20, skills: ['Kitchen', 'Wardrobe', 'Doors'], active: true, color: '#b45309', joinDate: '2022-03-01' },
+      { id: 's1', createdAt: ts, name: 'Rajesh Kumar', role: 'Carpenter', phone: '+968 9500 1111', nationality: 'Indian', salaryType: 'monthly', rate: 220, allowance: 20, skills: ['Kitchen', 'Wardrobe', 'Doors'], active: true, color: '#b45309', joinDate: '2022-03-01', documents: [{ id: 'd1', type: 'Resident card', number: 'RC-12345678', expiry: d(12) }, { id: 'd2', type: 'Passport', number: 'P1234567', expiry: d(400) }] },
       { id: 's2', createdAt: ts, name: 'Anil Thomas', role: 'CNC Operator', phone: '+968 9500 2222', nationality: 'Indian', salaryType: 'monthly', rate: 260, allowance: 25, skills: ['CNC', 'AutoCAD', 'Aspire'], active: true, color: '#2563eb', joinDate: '2023-01-15' },
       { id: 's3', createdAt: ts, name: 'Shafeeq M', role: 'Polisher', phone: '+968 9500 3333', nationality: 'Indian', salaryType: 'daily', rate: 9, allowance: 0, skills: ['PU', 'Lacquer'], active: true, color: '#9333ea', joinDate: '2024-06-10' },
       { id: 's4', createdAt: ts, name: 'Babu Raj', role: 'Helper', phone: '+968 9500 4444', nationality: 'Indian', salaryType: 'daily', rate: 7, allowance: 0, skills: ['Loading', 'Assembly'], active: true, color: '#059669', joinDate: '2024-09-01' },
@@ -106,5 +107,10 @@ export function seed(): DB {
       { id: 'sp1', createdAt: ts, title: 'Kitchen reveal', caption: 'Fresh kitchen delivered in Al Saada ✨ Marine ply + HPL, soft-close everything. DM for a free quote!', platforms: ['Instagram', 'Facebook'], date: d(2), status: 'scheduled' },
       { id: 'sp2', createdAt: ts, title: 'CNC process reel', caption: 'Watch our CNC carve an Arabic jali pattern in 18mm MDF 🔥', platforms: ['Instagram', 'TikTok'], date: d(5), status: 'draft' },
     ],
+    suppliers: [
+      { id: 'sup1', createdAt: ts, name: 'Dhofar Timber Trading', phone: '+968 2329 0000', category: 'Boards & Sheets', address: 'Industrial Area, Salalah' },
+      { id: 'sup2', createdAt: ts, name: 'Gulf ACP & Acrylic', phone: '+968 9911 2233', category: 'Signage materials' },
+    ],
+    purchases: [], receipts: [], deliveries: [], measurements: [],
   };
 }

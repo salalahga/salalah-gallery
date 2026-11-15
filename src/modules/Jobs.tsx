@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Plus, LayoutGrid, List, Trash2, Receipt, MessageCircle, PackageMinus } from 'lucide-react';
-import { store, useDB, nextInvoiceNumber, today, uid } from '../core/store';
+import { store, useDB, nextInvoiceNumber, today, uid, takeAdvances } from '../core/store';
+import { useRole } from '../core/session';
+import { Photos } from '../components/Photos';
+import { CuttingListEditor } from '../components/CuttingListEditor';
 import { useRoute, go } from '../core/router';
 import type { Job, JobStatus } from '../core/types';
 import { money, fmtDate } from '../core/calc';
@@ -9,7 +12,7 @@ import { Modal, Field, Badge, PageHeader, SearchBox, Tabs, Avatar, Progress, Emp
 import { useT } from '../core/i18n';
 import { useCanWrite } from '../core/session';
 import { usePlugin, useWaText, gcalLink, mapsLink, QR } from '../plugins/hooks';
-import { CalendarPlus, MapPin, Star, Printer } from 'lucide-react';
+import { CalendarPlus, MapPin, Star, Printer, Truck, HandCoins } from 'lucide-react';
 
 const STATUSES: JobStatus[] = ['enquiry', 'design', 'production', 'finishing', 'installation', 'completed'];
 
@@ -92,7 +95,7 @@ export default function Jobs() {
 }
 
 function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>; setJob: (j: Partial<Job>) => void; onSave: () => void; onClose: () => void; readOnly?: boolean }) {
-  const db = useDB(); const s = db.settings; const L = lookup(db);
+  const db = useDB(); const s = db.settings; const L = lookup(db); const role = useRole();
   const wt = L.workType(job.workTypeId);
   const set = (p: Partial<Job>) => setJob({ ...job, ...p });
   const exists = !!job.id && db.jobs.some((j) => j.id === job.id);
@@ -111,6 +114,8 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
   const makeInvoice = () => {
     const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), customerId: job.customerId, title: job.title || '', jobId: job.id, discount: 0, vat: s.vatRate, paid: 0,
       items: [{ id: uid(), description: job.title || 'Job', workTypeId: job.workTypeId, qty: 1, unit: 'lot', rate: job.value || 0 }] });
+    const adv = takeAdvances(inv.id, job.id, job.quotationId);
+    if (adv) { store.upsert('invoices', { ...inv, paid: adv }); toast(`Advance ${money(adv, s)} already received — shown as paid`); }
     go('invoices', { id: inv.id });
   };
 
@@ -119,6 +124,8 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
       footer={readOnly ? <button className="btn" onClick={onClose}>Close</button> : <>
         {exists && <button className="btn danger ghost" onClick={() => { if (confirmDelete('this job')) { store.remove('jobs', job.id!); onClose(); } }}><Trash2 size={15} />Delete</button>}
         {exists && <button className="btn ghost" onClick={makeInvoice}><Receipt size={15} />Create invoice</button>}
+        {exists && <button className="btn ghost" onClick={() => go('documents', { receipt: 'new', job: job.id! })}><HandCoins size={15} />Advance receipt</button>}
+        {exists && <button className="btn ghost" onClick={() => go('documents', { delivery: 'new', job: job.id! })}><Truck size={15} />Delivery note</button>}
         {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('jobUpdate', { customer: cust.name, code: job.code, title: job.title, status: statusMeta[job.status!].label, business: s.businessName }))}><MessageCircle size={15} />WhatsApp update</a>}
         <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={onSave}>Save job</button>
       </>}>
@@ -168,6 +175,12 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
             {materials.length > 0 && <span className="muted">Est. cost {money(materials.reduce((n, m) => n + (L.item(m.itemId)?.cost || 0) * m.qty, 0), s)}</span>}
           </div>
         </div>
+        <div className="section-title">Photos — before, progress & after</div>
+        <div className="span-3"><Photos photos={job.photos || []} onChange={(photos) => set({ photos })} readOnly={readOnly}
+          onShare={readOnly ? undefined : (p) => { try { sessionStorage.setItem('ww-share-photo', JSON.stringify({ url: p.url, jobId: job.id })); } catch { /* */ } onSave(); go('social', { new: 'photo' }); }}
+          onWebsite={role === 'admin' ? (p) => { store.setSettings({ website: { ...s.website, gallery: [...s.website.gallery.filter(Boolean), p.url] } }); toast('Added to website gallery'); } : undefined} /></div>
+        <div className="section-title">CNC / board cutting list</div>
+        <CuttingListEditor value={job.cutting} onChange={(cutting) => set({ cutting })} items={db.items} s={s} readOnly={readOnly} title={`${job.code || ''} ${job.title || ''}`} />
         <Field label="Notes" span={3}><textarea value={job.notes || ''} onChange={(e) => set({ notes: e.target.value })} /></Field>
         {exists && <>
           <div className="section-title">Tasks for this job ({tasks.length})</div>

@@ -29,3 +29,12 @@ export function waLink(phone: string | undefined, text: string) {
   const p = (phone || '').replace(/[^0-9]/g, '');
   return `https://wa.me/${p}?text=${encodeURIComponent(text)}`;
 }
+
+export const DOC_TYPES = ['Resident card', 'Visa', 'Passport', 'Labour card', 'Driving licence', 'Health card', 'Insurance'];
+/** Staff documents that are expired or expire within `days`, soonest first. */
+export function expiringDocs(db: DB, days?: number) {
+  const within = days ?? db.settings.docExpiryDays ?? 30;
+  return db.staff.filter((s) => s.active).flatMap((s) => (s.documents || []).filter((d) => d.expiry).map((d) => ({ staff: s, doc: d, days: daysFrom(d.expiry)! })))
+    .filter((x) => x.days <= within).sort((a, b) => a.days - b.days);
+}
+export const expiryLabel = (days: number) => (days < 0 ? { text: `Expired ${-days}d ago`, tone: 'red' } : days === 0 ? { text: 'Expires today', tone: 'red' } : { text: `Expires in ${days}d`, tone: days <= 7 ? 'red' : 'amber' });

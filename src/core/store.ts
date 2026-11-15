@@ -72,11 +72,12 @@ async function flush() {
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) { onSessionExpired(); return; }
         if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
-          toast(e.message); outbox.shift(); persist(); await pullAll(); continue; // rejected: drop and restore server copy
+          toast(e.message); outbox = outbox.filter((o) => o !== op); persist(); await pullAll(); continue; // rejected: drop and restore server copy
         }
         syncState.online = false; emit(); return; // offline: keep the queue and retry later
       }
-      outbox.shift(); persist();
+      // remove exactly the op that was sent: a newer edit of the same record may have replaced it meanwhile
+      outbox = outbox.filter((o) => o !== op); persist();
     }
   } finally { flushing = false; }
 }
@@ -211,4 +212,11 @@ export function exportBackup() {
   a.download = `woodworks-backup-${today()}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+/** Advance receipts for a job/quotation not yet credited to an invoice. Linking them stops double counting. */
+export function takeAdvances(invoiceId: string, jobId?: string, quotationId?: string): number {
+  const open = db.receipts.filter((r) => r.kind === 'advance' && !r.invoiceId && ((jobId && r.jobId === jobId) || (quotationId && r.quotationId === quotationId)));
+  open.forEach((r) => store.upsert('receipts', { ...r, invoiceId }));
+  return open.reduce((n, r) => n + (Number(r.amount) || 0), 0);
 }

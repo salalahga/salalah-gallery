@@ -361,3 +361,34 @@ code { background: var(--panel-2); border-radius: 5px; padding: 1px 5px; font-si
 .logo.big.has-img { background: transparent; display: block; width: auto; height: auto; border-radius: 0; overflow: visible; align-self: flex-start; }
 .logo.big.has-img img { display: block; height: 96px; width: auto; max-width: 100%; object-fit: contain; }
 @media (max-width: 860px) { .logo.big.has-img img { height: 56px; } .hero-title img { height: 36px; } .hero h1 { font-size: 22px; } }
+.doc-row { display: grid; grid-template-columns: 1.2fr 1fr 1fr auto auto; gap: 8px; align-items: center; margin-bottom: 8px; }
+@media (max-width: 520px) { .doc-row { grid-template-columns: 1fr 1fr; } }
+.ar { font-family: 'Noto Naskh Arabic', 'Geeza Pro', 'Arial', sans-serif; }
+.bi { display: inline-flex; flex-direction: column; line-height: 1.2; } .bi .ar { font-size: .92em; font-weight: 500; text-transform: none; letter-spacing: 0; }
+th .bi .ar { font-size: 12px; } .num .bi, th.num .bi { align-items: flex-end; }
+.ar-name { font-size: 20px; font-weight: 600; color: #7c4a1e; margin: 2px 0 4px; }
+.ar-title { font-size: 18px; font-weight: 600; color: #7c4a1e; margin-bottom: 4px; }
+.doc-sign .bi { align-items: center; width: 100%; }
+
+/* Photos */
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.photo-grid figure { margin: 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--panel-2); }
+.photo-grid img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; display: block; cursor: zoom-in; }
+.photo-grid figcaption { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px; }
+.photo-actions { display: flex; } .photo-actions .icon-btn { padding: 4px; }
+.photo-big { max-width: min(1100px, 94vw); max-height: 88vh; border-radius: 12px; margin: auto; display: block; }
+/* Cutting list */
+.cut-summary { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); display: grid; gap: 10px; font-size: 14px; }
+.sheet-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.sheet-row > div { display: flex; flex-direction: column; gap: 4px; } .sheet-row small { color: var(--ink-3); }
+/* Measurements */
+.measure-card { cursor: pointer; display: flex; flex-direction: column; gap: 2px; }
+.measure-thumb { margin-top: 10px; width: 100%; height: 120px; object-fit: cover; border-radius: 10px; }
+.measure-row { display: grid; grid-template-columns: 2fr repeat(4, minmax(60px, .7fr)) 2fr auto; gap: 6px; margin-bottom: 8px; align-items: center; }
+@media (max-width: 860px) {
+  .measure-row { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-2); }
+  .measure-row > input:first-child { grid-column: 1 / -1; }
+  .measure-row > input:nth-child(6) { grid-column: span 2; }
+  .measure-row > button { justify-self: end; }
+}
+.receipt-table td { padding: 10px 12px; border-bottom: 1px solid #eee; vertical-align: top; } .receipt-table td:first-child { width: 34%; color: #555; }

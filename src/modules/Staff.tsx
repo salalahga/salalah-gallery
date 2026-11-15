@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Plus, Trash2, Phone, MessageCircle } from 'lucide-react';
-import { store, useDB, today } from '../core/store';
+import { store, useDB, today, uid } from '../core/store';
 import type { Staff, SalaryType } from '../core/types';
 import { money, fmtDate } from '../core/calc';
-import { waLink } from '../core/helpers';
+import { waLink, DOC_TYPES, daysFrom, expiryLabel } from '../core/helpers';
 import { Modal, Field, PageHeader, Avatar, Badge, Empty, toast, confirmDelete, SearchBox } from '../components/ui';
 import { useT } from '../core/i18n';
 
@@ -24,7 +24,7 @@ export default function StaffPage() {
           <div key={p.id} className="card" style={{ cursor: 'pointer', opacity: p.active ? 1 : .55 }} onClick={() => setEdit({ ...p })}>
             <div className="flex" style={{ gap: 14 }}>
               <Avatar name={p.name} color={p.color} size={52} />
-              <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 16 }}>{p.name}</b><div className="muted">{p.role} · {p.nationality || '—'}</div>{!p.active && <Badge tone="red">Inactive</Badge>}</div>
+              <div style={{ flex: 1, minWidth: 0 }}><b style={{ fontSize: 16 }}>{p.name}</b><div className="muted">{p.role} · {p.nationality || '—'}</div>{!p.active && <Badge tone="red">Inactive</Badge>}{(p.documents || []).filter((d) => d.expiry && daysFrom(d.expiry)! <= (s.docExpiryDays ?? 30)).map((d) => { const e = expiryLabel(daysFrom(d.expiry)!); return <div key={d.id}><Badge tone={e.tone}>{d.type}: {e.text}</Badge></div>; })}</div>
               <div onClick={(e) => e.stopPropagation()} className="flex">{p.phone && <a className="icon-btn" href={`tel:${p.phone}`}><Phone size={16} /></a>}{p.phone && <a className="icon-btn" target="_blank" rel="noreferrer" href={waLink(p.phone, `Hi ${p.name}, `)}><MessageCircle size={16} /></a>}</div>
             </div>
             <div className="chips" style={{ margin: '12px 0' }}>{p.skills.map((k) => <Badge key={k}>{k}</Badge>)}</div>
@@ -48,6 +48,18 @@ export default function StaffPage() {
           <Field label="Email"><input type="email" value={edit.email || ''} onChange={(e) => setEdit({ ...edit, email: e.target.value })} /></Field>
           <Field label="Bank / account"><input value={edit.bank || ''} onChange={(e) => setEdit({ ...edit, bank: e.target.value })} /></Field>
           <Field label="Active"><select value={edit.active ? '1' : '0'} onChange={(e) => setEdit({ ...edit, active: e.target.value === '1' })}><option value="1">Active</option><option value="0">Inactive</option></select></Field>
+          <div className="section-title">Documents & expiry dates</div>
+          <div className="span-3">
+            {(edit.documents || []).map((d, i) => { const n = d.expiry ? daysFrom(d.expiry)! : undefined; const e = n !== undefined ? expiryLabel(n) : null; const upd = (p: Partial<typeof d>) => setEdit({ ...edit, documents: edit.documents!.map((x, k) => (k === i ? { ...x, ...p } : x)) }); return (
+              <div key={d.id} className="doc-row">
+                <select value={d.type} onChange={(ev) => upd({ type: ev.target.value })}>{[...new Set([...DOC_TYPES, d.type])].map((t) => <option key={t}>{t}</option>)}</select>
+                <input placeholder="Number" value={d.number || ''} onChange={(ev) => upd({ number: ev.target.value })} />
+                <input type="date" value={d.expiry || ''} onChange={(ev) => upd({ expiry: ev.target.value })} />
+                {e && n! <= (s.docExpiryDays ?? 30) ? <Badge tone={e.tone}>{e.text}</Badge> : <span />}
+                <button type="button" className="icon-btn" onClick={() => setEdit({ ...edit, documents: edit.documents!.filter((_, k) => k !== i) })}><Trash2 size={14} /></button>
+              </div>); })}
+            <button type="button" className="btn sm" onClick={() => setEdit({ ...edit, documents: [...(edit.documents || []), { id: uid(), type: (edit.documents || []).length ? 'Passport' : 'Resident card' }] })}><Plus size={14} />Add document</button>
+          </div>
           <Field label="Skills (comma separated)" span={3}><input value={(edit.skills || []).join(', ')} onChange={(e) => setEdit({ ...edit, skills: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="CNC, Kitchen, PU polish" /></Field>
           <Field label="Colour" span={3}><div className="chips">{COLORS.map((c) => <button key={c} type="button" onClick={() => setEdit({ ...edit, color: c })} style={{ width: 28, height: 28, borderRadius: 8, background: c, border: edit.color === c ? '3px solid var(--ink)' : '0', cursor: 'pointer' }} />)}</div></Field>
           {edit.joinDate && <div className="span-3 muted">Joined {fmtDate(edit.joinDate)}</div>}

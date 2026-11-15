@@ -39,6 +39,11 @@ export default function SettingsPage() {
         <Field label="Time zone"><input value={s.timezone || 'Asia/Muscat'} onChange={(e) => set({ timezone: e.target.value })} placeholder="Asia/Muscat" /></Field>
         <Field label="Daily summary time (hour, 0–23)"><input type="number" min={0} max={23} value={s.dailyHour ?? 8} onChange={(e) => set({ dailyHour: +e.target.value })} /></Field>
         <div className="muted" style={{ alignSelf: 'end' }}>Telegram, email, QR codes and more: <a href="#/plugins" style={{ textDecoration: 'underline' }}>Plugins</a></div>
+        <Field label="Company name in Arabic"><input dir="rtl" value={s.businessNameAr || ''} onChange={(e) => set({ businessNameAr: e.target.value })} /></Field>
+        <Field label="Address in Arabic"><input dir="rtl" value={s.addressAr || ''} onChange={(e) => set({ addressAr: e.target.value })} /></Field>
+        <Field label="Arabic on printed documents"><select value={s.arabicOnDocs === false ? '0' : '1'} onChange={(e) => set({ arabicOnDocs: e.target.value === '1' })}><option value="1">Yes — English + Arabic</option><option value="0">English only</option></select></Field>
+        <Field label="Warn before staff documents expire (days)"><input type="number" value={s.docExpiryDays ?? 30} onChange={(e) => set({ docExpiryDays: +e.target.value })} /></Field>
+        <div /><div />
         <Field label="Invoice number prefix (empty = plain numbers like 1213)"><input value={s.invoicePrefix ?? ''} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="e.g. INV" /></Field>
         <Field label="Plain numbering starts at"><input type="number" value={s.invoiceStart ?? 1} onChange={(e) => set({ invoiceStart: +e.target.value })} /></Field>
         <div />

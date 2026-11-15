@@ -22,6 +22,10 @@ export const TRIGGERS = {
   'invoice.overdue': 'Overdue invoices (daily)',
   'task.due_today': 'Tasks due today (daily)',
   'job.due_soon': 'Jobs due in 2 days (daily)',
+  'document.expiring': 'Staff document expiring (30/14/7/3/1 days before)',
+  'measurement.created': 'New site measurement recorded',
+  'purchase.received': 'Supplier goods received',
+  'receipt.created': 'Advance / payment receipt issued',
 };
 
 const id = () => crypto.randomBytes(6).toString('hex');
@@ -35,6 +39,8 @@ export const DEFAULT_RULES = [
   { name: 'Send staff their new task', trigger: 'task.assigned', actions: [{ type: 'telegram', to: 'staff', template: '🔨 New task: {{task.title}}\nJob: {{job.code}} {{job.title}}\nDue: {{task.dueDate}} · Priority: {{task.priority}}' }] },
   { name: 'Morning summary', trigger: 'daily.summary', actions: [{ type: 'telegram', template: '{{summary}}' }, { type: 'email', subject: 'Workshop summary {{date}}', template: '{{summary}}' }] },
   { name: 'Overdue invoices reminder', trigger: 'invoice.overdue', actions: [{ type: 'telegram', template: '⏰ Overdue: {{invoice.number}} — {{customer.name}} owes {{balance}} (due {{invoice.dueDate}})' }] },
+  { name: 'Staff document expiring', trigger: 'document.expiring', actions: [{ type: 'telegram', template: '🪪 {{staff.name}} — {{doc.type}} {{doc.number}} expires on {{doc.expiry}} ({{days}} days left)' }] },
+  { name: 'New site measurement', trigger: 'measurement.created', actions: [{ type: 'telegram', template: '📐 New site measurement {{measurement.number}} by {{staff.name}} for {{customer.name}} — {{measurement.site}}' }] },
   { name: 'Send all events to webhooks (n8n / Make / Sheets)', trigger: '*', actions: [{ type: 'webhook' }] },
 ].map((r) => ({ id: id(), enabled: false, ...r }));
 
@@ -138,6 +144,9 @@ export function createAutomations(db, plugins, { tick }) {
       if (col === 'txns' && after && !before && after.kind === 'expense') await fire('expense.added', { txn: after, amount: money(after.amount, cur), raw });
       if (col === 'items' && after && Number(after.qty) <= Number(after.reorder) && (!before || Number(before.qty) > Number(before.reorder))) await fire('stock.low', { item: after, raw });
       if (col === 'customers' && after && !before) await fire('customer.created', { customer: after, raw });
+      if (col === 'measurements' && after && !before) await fire('measurement.created', { measurement: after, customer: customer || { name: after.customerName, phone: after.customerPhone }, staff: await one('staff', after.measuredBy), raw });
+      if (col === 'purchases' && after && after.status === 'received' && before?.status !== 'received') await fire('purchase.received', { purchase: after, supplier: await one('suppliers', after.supplierId), raw });
+      if (col === 'receipts' && after && !before) await fire('receipt.created', { receipt: after, customer, amount: money(after.amount, cur), raw });
     } catch (e) { console.error('automation', e); }
   }
 
@@ -177,6 +186,12 @@ export function createAutomations(db, plugins, { tick }) {
     for (const i of overdue) await fire('invoice.overdue', { invoice: i, customer: cust(i.customerId), balance: money(docTotal(i) - (Number(i.paid) || 0), cur), raw: i });
     for (const t of dueToday) await fire('task.due_today', { task: t, staff: staff.find((x) => x.id === t.staffId), job: jobs.find((j) => j.id === t.jobId), raw: t });
     for (const j of dueSoon) await fire('job.due_soon', { job: j, customer: cust(j.customerId), raw: j });
+    const marks = new Set([30, 14, 7, 3, 1, 0, Number(s.docExpiryDays) || 30]);
+    for (const st of staff.filter((x) => x.active !== false)) for (const d of st.documents || []) {
+      if (!d.expiry) continue;
+      const days = Math.round((new Date(d.expiry + 'T00:00:00Z') - new Date(date + 'T00:00:00Z')) / 864e5);
+      if (marks.has(days)) await fire('document.expiring', { staff: st, doc: d, days, raw: { staff: st.name, ...d, days } });
+    }
     return true;
   }
   function start() { setInterval(() => daily().catch((e) => console.error('daily', e)), 5 * 60e3); setTimeout(() => daily().catch(() => {}), 10e3); }

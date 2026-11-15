@@ -22,6 +22,18 @@ An all-in-one app for a carpentry / CNC workshop: jobs, staff, payroll, quotatio
 | | **Website** | Auto-built business website (services, gallery, shop, contact, WhatsApp button), 4 themes, live preview, download `index.html` |
 | System | **Settings** | Business profile & logo, currency, VAT, work types & their fields, categories, payroll rules, integrations, backup/restore |
 
+## Workshop extras
+
+| Feature | Where | What it does |
+|---|---|---|
+| Job photos | Job → Photos | Before / progress / after photos from the phone camera, compressed automatically; send one to a social post or the website gallery |
+| CNC / board cutting list | Job → Cutting list | Parts list → how many sheets are needed (shelf-packing estimate, rotation unless “grain”), layout drawing, stock check, printable list |
+| Suppliers & purchase orders | Purchases | PO → “Goods received” adds stock → “Pay supplier” posts the expense; amounts owed per supplier |
+| Staff document expiry | Staff → Documents | Resident card / visa / passport dates; dashboard warning and a Telegram alert 30/14/7/3/1 days before |
+| Arabic on documents | Settings → Business | Company name, address and labels in English + Arabic on quotations, invoices, receipts, delivery notes, POs |
+| Receipts & delivery notes | Receipts & Delivery | Advance receipts (credited automatically when the job is invoiced), payment receipts, delivery notes |
+| Site measurements | Site measurements | On-site form for phones: sizes, GPS location, photos; staff can use it; one tap turns it into a draft quotation |
+
 ## Plugins (all free)
 
 Open **Plugins** (owner only) to switch each one on.

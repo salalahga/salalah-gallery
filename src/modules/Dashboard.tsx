@@ -2,7 +2,8 @@ import { Hammer, Wallet, AlertTriangle, TrendingUp, FileText, ShoppingCart, Plus
 import { useDB } from '../core/store';
 import { useT } from '../core/i18n';
 import { docTotals, finance, invoiceBalance, lastMonths, money, monthLabel } from '../core/calc';
-import { statusMeta, lookup, dueLabel, priorityTone } from '../core/helpers';
+import { statusMeta, lookup, dueLabel, priorityTone, expiringDocs, expiryLabel } from '../core/helpers';
+import { IdCard } from 'lucide-react';
 import { go } from '../core/router';
 import { Stat, BarChart, Donut, Badge, Avatar, Progress, Empty } from '../components/ui';
 
@@ -13,6 +14,7 @@ export default function Dashboard() {
   const active = db.jobs.filter((j) => !['completed', 'cancelled'].includes(j.status));
   const receivable = db.invoices.reduce((n, i) => n + Math.max(0, invoiceBalance(i)), 0);
   const low = db.items.filter((i) => i.qty <= i.reorder);
+  const docs = expiringDocs(db);
   const pipeline = db.quotations.filter((q) => q.status === 'sent').reduce((n, q) => n + docTotals(q).total, 0);
   const chart = lastMonths(6).map((m) => { const x = finance(db, m); return { label: monthLabel(m).split(' ')[0], a: x.income, b: x.expense }; });
   const byType = s.workTypes.map((w) => ({ label: w.name, color: w.color, value: active.filter((j) => j.workTypeId === w.id).length })).filter((p) => p.value);
@@ -78,6 +80,10 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {docs.length > 0 && <div className="card mb">
+        <h3><span className="flex"><IdCard size={16} color="#c2410c" />Staff documents expiring</span><a className="link" href="#/staff">Staff</a></h3>
+        <ul className="list">{docs.slice(0, 6).map((x) => { const e = expiryLabel(x.days); return <li key={x.staff.id + x.doc.id}><div className="grow"><div className="title">{x.staff.name} — {x.doc.type}</div><div className="muted">{x.doc.number || ''} · {x.doc.expiry}</div></div><Badge tone={e.tone}>{e.text}</Badge></li>; })}</ul>
+      </div>}
       <div className="grid g2">
         <div className="card">
           <h3><span className="flex"><AlertTriangle size={16} color="#c2410c" />{t('Low stock')}</span><a className="link" href="#/inventory">Inventory</a></h3>

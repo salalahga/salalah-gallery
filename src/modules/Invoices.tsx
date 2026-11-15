@@ -1,5 +1,8 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Printer, MessageCircle, Eye, HandCoins, Receipt, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Plus, Trash2, Printer, MessageCircle, Eye, HandCoins, Receipt, AlertCircle, CheckCircle2, Truck } from 'lucide-react';
+import { issueReceipt } from '../core/receipts';
+import { ReceiptPrint } from './Documents';
+import type { Receipt as ReceiptT } from '../core/types';
 import { store, useDB, nextInvoiceNumber, today, uid } from '../core/store';
 import { useRoute, go } from '../core/router';
 import type { Invoice } from '../core/types';
@@ -7,6 +10,7 @@ import { docTotals, money, fmtDate, invoiceBalance, invoiceStatus } from '../cor
 import { statusMeta, lookup, waLink, daysFrom } from '../core/helpers';
 import { Modal, Field, PageHeader, Badge, Empty, Tabs, SearchBox, Stat, toast, confirmDelete } from '../components/ui';
 import { LinesEditor, DocView } from '../components/DocEditor';
+import { Bi } from '../components/DocParts';
 import { useT } from '../core/i18n';
 import { useWaText } from '../plugins/hooks';
 
@@ -14,7 +18,8 @@ export default function Invoices() {
   const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute(); const wa = useWaText();
   const [edit, setEdit] = useState<Partial<Invoice> | null>(null);
   const [view, setView] = useState<Invoice | null>(null);
-  const [pay, setPay] = useState<{ inv: Invoice; amount: number; method: string } | null>(null);
+  const [pay, setPay] = useState<{ inv: Invoice; amount: number; method: string; chequeNo?: string } | null>(null);
+  const [receipt, setReceipt] = useState<ReceiptT | null>(null);
   const [tab, setTab] = useState('all'); const [q, setQ] = useState('');
   const blank = (): Partial<Invoice> => ({ number: nextInvoiceNumber(), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), discount: 0, vat: s.vatRate, paid: 0, items: [{ id: uid(), description: '', qty: 1, unit: 'pcs', rate: 0 }], title: '' });
   useEffect(() => {
@@ -26,9 +31,8 @@ export default function Invoices() {
   const save = () => { if (!edit?.customerId) return toast('Select a customer'); const v = store.upsert('invoices', edit as Invoice); setEdit(null); toast('Invoice saved'); return v; };
   const recordPayment = () => {
     if (!pay || pay.amount <= 0) return;
-    store.upsert('invoices', { ...pay.inv, paid: (pay.inv.paid || 0) + pay.amount });
-    store.upsert('txns', { date: today(), kind: 'income', category: 'Job Payment', amount: pay.amount, method: pay.method, description: `Payment ${pay.inv.number} — ${L.customer(pay.inv.customerId)?.name}`, ref: pay.inv.number });
-    setPay(null); toast('Payment recorded in accounts');
+    const r = issueReceipt({ date: today(), kind: 'payment', customerId: pay.inv.customerId, invoiceId: pay.inv.id, jobId: pay.inv.jobId, amount: pay.amount, method: pay.method, chequeNo: pay.chequeNo });
+    setPay(null); setReceipt(r); toast('Payment recorded in Accounts — receipt ready');
   };
   const share = (x: Invoice) => { const c = L.customer(x.customerId); return waLink(c?.phone, wa('invoice', { customer: c?.name, number: x.number, title: x.title, total: money(docTotals(x).total, s), paid: money(x.paid, s), balance: money(invoiceBalance(x), s), due: fmtDate(x.dueDate), business: s.businessName, phone: s.phone })); };
   const totalDue = db.invoices.reduce((n, i) => n + Math.max(0, invoiceBalance(i)), 0);
@@ -59,6 +63,7 @@ export default function Invoices() {
                 {st !== 'paid' && <button className="icon-btn" title="Record payment" onClick={() => setPay({ inv: x, amount: +invoiceBalance(x).toFixed(3), method: 'Cash' })}><HandCoins size={16} /></button>}
                 <button className="icon-btn" title="Preview / print" onClick={() => setView(x)}><Eye size={16} /></button>
                 <a className="icon-btn" title="WhatsApp" target="_blank" rel="noreferrer" href={share(x)}><MessageCircle size={16} /></a>
+                <button className="icon-btn" title="Delivery note" onClick={() => go('documents', { delivery: 'new', invoice: x.id })}><Truck size={16} /></button>
               </div></td>
             </tr>); })}</tbody></table></div> : <Empty title="No invoices" />}
       </div>
@@ -83,15 +88,19 @@ export default function Invoices() {
         </div>
       </Modal>}
       {view && <Modal open wide title={view.number} onClose={() => setView(null)} footer={<><a className="btn" target="_blank" rel="noreferrer" href={share(view)}><MessageCircle size={15} />WhatsApp</a><span className="spacer" /><button className="btn" onClick={() => setView(null)}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print / Save PDF</button></>}>
-        <DocView kind={Number(view.vat) > 0 ? 'TAX INVOICE' : 'INVOICE'} doc={view} s={s} customer={L.customer(view.customerId)} extra={<><div><span>Paid</span><span>{money(view.paid, s)}</span></div><div><b>Balance due</b><b>{money(invoiceBalance(view), s)}</b></div></>} />
+        <DocView kind={Number(view.vat) > 0 ? 'TAX INVOICE' : 'INVOICE'} doc={view} s={s} customer={L.customer(view.customerId)} extra={<><div><span><Bi en="Paid" inline /></span><span>{money(view.paid, s)}</span></div><div><b><Bi en="Balance due" inline /></b><b>{money(invoiceBalance(view), s)}</b></div></>} />
         {view.notes && <p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{view.notes}</p>}
       </Modal>}
       {pay && <Modal open title={`Payment for ${pay.inv.number}`} onClose={() => setPay(null)} footer={<><button className="btn" onClick={() => setPay(null)}>Cancel</button><button className="btn primary" onClick={recordPayment}>Record payment</button></>}>
         <div className="form two">
           <Field label={`Amount (${s.currency})`}><input type="number" autoFocus value={pay.amount} onChange={(e) => setPay({ ...pay, amount: +e.target.value })} /></Field>
-          <Field label="Method"><select value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}>{['Cash', 'Bank', 'Card', 'Cheque', 'Online'].map((m) => <option key={m}>{m}</option>)}</select></Field>
+          <Field label="Method"><select value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}>{['Cash', 'Cheque', 'Bank transfer', 'Card', 'Online'].map((m) => <option key={m}>{m}</option>)}</select></Field>
+          {pay.method === 'Cheque' && <Field label="Cheque no. / bank"><input value={pay.chequeNo || ''} onChange={(e) => setPay({ ...pay, chequeNo: e.target.value })} /></Field>}
           <p className="span-3 muted">Balance before payment: {money(invoiceBalance(pay.inv), s)}</p>
         </div>
+      </Modal>}
+      {receipt && <Modal open wide title={receipt.number} onClose={() => setReceipt(null)} footer={<><span className="spacer" /><button className="btn" onClick={() => setReceipt(null)}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print receipt</button></>}>
+        <ReceiptPrint r={receipt} s={s} customer={L.customer(receipt.customerId)} against={`Invoice ${db.invoices.find((i) => i.id === receipt.invoiceId)?.number || ''}`} />
       </Modal>}
     </>
   );
