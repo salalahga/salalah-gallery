@@ -45,10 +45,10 @@ export function Login({ expired }: { expired?: boolean }) {
   );
 }
 
-export function Setup() {
+export function Setup({ needsCode }: { needsCode?: boolean }) {
   const t = T.en;
   const local = hasLocalData();
-  const [f, setF] = useState({ name: '', username: 'owner', password: '', confirm: '', start: local ? 'mine' : 'empty' });
+  const [f, setF] = useState({ name: '', username: 'owner', password: '', confirm: '', code: '', start: local ? 'mine' : 'empty' });
   const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setErr('');
@@ -57,14 +57,15 @@ export function Setup() {
     setBusy(true);
     try {
       const data = f.start === 'mine' ? localSnapshot() : f.start === 'demo' ? seed() : undefined;
-      await session.setup({ name: f.name, username: f.username, password: f.password, data });
+      await session.setup({ name: f.name, username: f.username, password: f.password, data, code: f.code || undefined });
     } catch (x) { setErr((x as Error).message); } finally { setBusy(false); }
   };
   return (
     <Shell>
       <h2><ShieldCheck size={22} style={{ verticalAlign: -3, color: 'var(--wood)' }} /> {t.setupTitle}</h2><p className="muted">{t.setupSub}</p>
       <form onSubmit={submit} className="auth-form">
-        <label className="field"><span>{t.name}</span><input autoFocus value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></label>
+        {needsCode && <label className="field"><span>Setup code (given to the owner)</span><input autoFocus autoComplete="off" value={f.code} onChange={(e) => setF({ ...f, code: e.target.value.trim() })} required /></label>}
+        <label className="field"><span>{t.name}</span><input autoFocus={!needsCode} value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} required /></label>
         <label className="field"><span>{t.user}</span><input autoCapitalize="none" autoComplete="username" value={f.username} onChange={(e) => setF({ ...f, username: e.target.value })} required /></label>
         <label className="field"><span>{t.pass}</span><input type="password" autoComplete="new-password" value={f.password} onChange={(e) => setF({ ...f, password: e.target.value })} required /></label>
         <label className="field"><span>{t.confirm}</span><input type="password" autoComplete="new-password" value={f.confirm} onChange={(e) => setF({ ...f, confirm: e.target.value })} required /></label>

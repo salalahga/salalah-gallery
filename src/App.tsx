@@ -13,7 +13,7 @@ export default function App() {
   const st = useSession();
   useEffect(() => { void session.init(); }, []);
   if (st.status === 'loading') return <><Splash /><Toaster /></>;
-  if (st.status === 'setup') return <><Setup /><Toaster /></>;
+  if (st.status === 'setup') return <><Setup needsCode={st.needsCode} /><Toaster /></>;
   if (st.status === 'login') return <><Login expired={st.expired} /><Toaster /></>;
   return <Workspace />;
 }

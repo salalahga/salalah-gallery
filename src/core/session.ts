@@ -8,7 +8,7 @@ export interface User { id: string; name: string; username: string; role: Role; 
 export type SessionState =
   | { status: 'loading' }
   | { status: 'local' } // no server: single-device mode
-  | { status: 'setup' } // server running, no owner account yet
+  | { status: 'setup'; needsCode?: boolean } // server running, no owner account yet
   | { status: 'login'; expired?: boolean }
   | { status: 'ready'; user: User };
 
@@ -22,7 +22,7 @@ export const session = {
   subscribe(f: () => void) { subs.add(f); return () => subs.delete(f); },
 
   async init() {
-    let status: { server?: boolean; setupDone?: boolean } | undefined;
+    let status: { server?: boolean; setupDone?: boolean; setupNeedsCode?: boolean } | undefined;
     try { status = await api('/api/status'); } catch (e) {
       // Offline but previously logged in: open with cached data, sync resumes when back online.
       const last = readLastUser();
@@ -30,7 +30,7 @@ export const session = {
       return set({ status: 'local' });
     }
     if (!status?.server) return set({ status: 'local' });
-    if (!status.setupDone) return set({ status: 'setup' });
+    if (!status.setupDone) return set({ status: 'setup', needsCode: !!status.setupNeedsCode });
     try { const { user } = await api<{ user: User }>('/api/me'); await session.enter(user); }
     catch { set({ status: 'login' }); }
   },
@@ -46,7 +46,7 @@ export const session = {
     await session.enter(user);
   },
 
-  async setup(p: { name: string; username: string; password: string; data?: DB }) {
+  async setup(p: { name: string; username: string; password: string; data?: DB; code?: string }) {
     const { user } = await api<{ user: User }>('/api/setup', { method: 'POST', body: p });
     await session.enter(user);
   },

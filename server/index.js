@@ -58,13 +58,21 @@ const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
 // ---- status / setup / login ----
 app.get('/api/status', wrap(async (_req, res) => {
   const n = await db.get('SELECT COUNT(*) AS n FROM users');
-  res.json({ server: true, setupDone: Number(n.n) > 0 });
+  res.json({ server: true, setupDone: Number(n.n) > 0, setupNeedsCode: !!process.env.SETUP_CODE });
 }));
 
 app.post('/api/setup', wrap(async (req, res) => {
   const n = await db.get('SELECT COUNT(*) AS n FROM users');
   if (Number(n.n) > 0) return res.status(409).json({ error: 'Already set up' });
-  const { name, username, password, data } = req.body || {};
+  const { name, username, password, data, code } = req.body || {};
+  // On a public host, SETUP_CODE stops a stranger from claiming the owner account before you do.
+  const expected = process.env.SETUP_CODE;
+  if (expected) {
+    const key = 'setup:' + (req.ip || '');
+    if (!loginAllowed(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+    const a = Buffer.from(String(code || '')); const b = Buffer.from(expected);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) { loginFailed(key); return res.status(403).json({ error: 'Wrong setup code' }); }
+  }
   if (!name || !username || !password || String(password).length < 6) return res.status(400).json({ error: 'Name, username and a password of at least 6 characters are required' });
   const user = { id: uid(), name, username: String(username).toLowerCase().trim(), hash: hashPassword(password), role: 'admin' };
   await db.tx(async (t) => {
