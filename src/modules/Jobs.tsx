@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, LayoutGrid, List, Trash2, Receipt, MessageCircle, PackageMinus } from 'lucide-react';
-import { store, useDB, nextNumber, today, uid } from '../core/store';
+import { store, useDB, nextInvoiceNumber, today, uid } from '../core/store';
 import { useRoute, go } from '../core/router';
 import type { Job, JobStatus } from '../core/types';
 import { money, fmtDate } from '../core/calc';
@@ -109,7 +109,7 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
     toast(`Stock reduced · material cost ${money(cost, s)}`);
   };
   const makeInvoice = () => {
-    const inv = store.upsert('invoices', { number: nextNumber('INV', db.invoices.map((i) => i.number)), date: today(), customerId: job.customerId, title: job.title || '', jobId: job.id, discount: 0, vat: s.vatRate, paid: 0,
+    const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), customerId: job.customerId, title: job.title || '', jobId: job.id, discount: 0, vat: s.vatRate, paid: 0,
       items: [{ id: uid(), description: job.title || 'Job', workTypeId: job.workTypeId, qty: 1, unit: 'lot', rate: job.value || 0 }] });
     go('invoices', { id: inv.id });
   };

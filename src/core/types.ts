@@ -64,6 +64,9 @@ export interface Settings {
   website: { hero: string; about: string; theme: string; gallery: string[]; showProducts: boolean; mapUrl: string };
   mlNumerals?: boolean;
   timezone?: string; dailyHour?: number;
+  logoLight?: string; poBox?: string; paymentInfo?: string;
+  /** Invoice numbering: empty prefix = plain numbers (1212, 1213…) continuing from invoiceStart. */
+  invoicePrefix?: string; invoiceStart?: number;
   /** Non-secret plugin switches and options, shared with every device. Secrets live on the server only. */
   plugins?: Record<string, PluginState>;
 }

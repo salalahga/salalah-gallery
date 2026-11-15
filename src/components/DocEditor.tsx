@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react';
 import type { Invoice, LineItem, Quotation, Settings, Customer } from '../core/types';
 import { uid } from '../core/store';
-import { docTotals, lineTotal, money, fmtDate } from '../core/calc';
+import { docTotals, lineTotal, money, fmtDate, amountInWords } from '../core/calc';
 import { QR, useDocQr } from '../plugins/hooks';
 
 type Doc = Partial<Quotation> | Partial<Invoice>;
@@ -40,13 +40,14 @@ export function LinesEditor({ doc, set, s }: { doc: Doc; set: (p: Doc) => void; 
   );
 }
 
-export function DocView({ kind, doc, s, customer, extra }: { kind: 'QUOTATION' | 'TAX INVOICE'; doc: Quotation | Invoice; s: Settings; customer?: Customer; extra?: React.ReactNode }) {
+export function DocView({ kind, doc, s, customer, extra }: { kind: 'QUOTATION' | 'TAX INVOICE' | 'INVOICE'; doc: Quotation | Invoice; s: Settings; customer?: Customer; extra?: React.ReactNode }) {
   const tot = docTotals(doc);
   const qr = useDocQr();
   return (
     <div className="print-area"><div className="doc">
+      {s.logo && <img className="doc-watermark" src={s.logo} alt="" />}
       <div className="doc-head">
-        <div>{s.logo && <img src={s.logo} alt="" style={{ height: 48, marginBottom: 6 }} />}<h2>{s.businessName}</h2><div>{s.tagline}</div><div>{s.address}, {s.city}, {s.country}</div><div>{s.phone} · {s.email}</div>{s.crNumber && <div>CR: {s.crNumber}</div>}{s.vatNumber && <div>VATIN: {s.vatNumber}</div>}</div>
+        <div className="flex" style={{ gap: 16, alignItems: 'flex-start' }}>{s.logo && <img src={s.logo} alt="" style={{ height: 76 }} />}<div><h2>{s.businessName}</h2>{s.tagline && <div>{s.tagline}</div>}<div>{s.address}, {s.city}, {s.country}</div><div>{s.phone && `GSM: ${s.phone}`}{s.phone && s.email ? ' · ' : ''}{s.email}</div>{s.crNumber && <div>C.R: {s.crNumber}</div>}{s.vatNumber && <div>VATIN: {s.vatNumber}</div>}</div></div>
         <div className="right"><h2>{kind}</h2><div><b>{doc.number}</b></div><div>Date: {fmtDate(doc.date)}</div>{'validUntil' in doc && doc.validUntil && <div>Valid until: {fmtDate(doc.validUntil)}</div>}{'dueDate' in doc && doc.dueDate && <div>Due: {fmtDate(doc.dueDate)}</div>}</div>
       </div>
       <div style={{ marginBottom: 16 }}><div style={{ color: '#888', fontSize: 11, textTransform: 'uppercase' }}>Bill to</div><b>{customer?.name || '—'}</b><div>{customer?.address}</div><div>{customer?.phone}</div></div>
@@ -60,6 +61,8 @@ export function DocView({ kind, doc, s, customer, extra }: { kind: 'QUOTATION' |
         <div className="grand"><span>Total</span><span>{money(tot.total, s)}</span></div>
         {extra}
       </div>
+      <p className="doc-words"><i>Amount in words: {amountInWords(tot.total, s.currency)}</i></p>
+      {kind !== 'QUOTATION' && s.paymentInfo && <div className="doc-terms">{s.paymentInfo}</div>}
       {'terms' in doc && doc.terms && <div className="doc-terms"><b>Terms & conditions</b><br />{doc.terms}</div>}
       <div className="doc-foot">{qr ? <QR value={qr.url} caption={qr.caption} /> : <span />}</div>
       <div className="doc-sign"><div>Authorised signature</div><div>Customer acceptance</div></div>

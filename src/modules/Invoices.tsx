@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Printer, MessageCircle, Eye, HandCoins, Receipt, AlertCircle, CheckCircle2 } from 'lucide-react';
-import { store, useDB, nextNumber, today, uid } from '../core/store';
+import { store, useDB, nextInvoiceNumber, today, uid } from '../core/store';
 import { useRoute, go } from '../core/router';
 import type { Invoice } from '../core/types';
 import { docTotals, money, fmtDate, invoiceBalance, invoiceStatus } from '../core/calc';
@@ -16,7 +16,7 @@ export default function Invoices() {
   const [view, setView] = useState<Invoice | null>(null);
   const [pay, setPay] = useState<{ inv: Invoice; amount: number; method: string } | null>(null);
   const [tab, setTab] = useState('all'); const [q, setQ] = useState('');
-  const blank = (): Partial<Invoice> => ({ number: nextNumber('INV', db.invoices.map((x) => x.number)), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), discount: 0, vat: s.vatRate, paid: 0, items: [{ id: uid(), description: '', qty: 1, unit: 'pcs', rate: 0 }], title: '' });
+  const blank = (): Partial<Invoice> => ({ number: nextInvoiceNumber(), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), discount: 0, vat: s.vatRate, paid: 0, items: [{ id: uid(), description: '', qty: 1, unit: 'pcs', rate: 0 }], title: '' });
   useEffect(() => {
     if (params.new) { setEdit(blank()); go('invoices'); }
     if (params.id) { const i = db.invoices.find((x) => x.id === params.id); if (i) setEdit(structuredClone(i)); go('invoices'); }
@@ -83,7 +83,7 @@ export default function Invoices() {
         </div>
       </Modal>}
       {view && <Modal open wide title={view.number} onClose={() => setView(null)} footer={<><a className="btn" target="_blank" rel="noreferrer" href={share(view)}><MessageCircle size={15} />WhatsApp</a><span className="spacer" /><button className="btn" onClick={() => setView(null)}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print / Save PDF</button></>}>
-        <DocView kind="TAX INVOICE" doc={view} s={s} customer={L.customer(view.customerId)} extra={<><div><span>Paid</span><span>{money(view.paid, s)}</span></div><div><b>Balance due</b><b>{money(invoiceBalance(view), s)}</b></div></>} />
+        <DocView kind={Number(view.vat) > 0 ? 'TAX INVOICE' : 'INVOICE'} doc={view} s={s} customer={L.customer(view.customerId)} extra={<><div><span>Paid</span><span>{money(view.paid, s)}</span></div><div><b>Balance due</b><b>{money(invoiceBalance(view), s)}</b></div></>} />
         {view.notes && <p className="muted" style={{ whiteSpace: 'pre-wrap' }}>{view.notes}</p>}
       </Modal>}
       {pay && <Modal open title={`Payment for ${pay.inv.number}`} onClose={() => setPay(null)} footer={<><button className="btn" onClick={() => setPay(null)}>Cancel</button><button className="btn primary" onClick={recordPayment}>Record payment</button></>}>

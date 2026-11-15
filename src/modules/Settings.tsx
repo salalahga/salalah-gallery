@@ -40,6 +40,10 @@ export default function SettingsPage() {
         <Field label="Time zone"><input value={s.timezone || 'Asia/Muscat'} onChange={(e) => set({ timezone: e.target.value })} placeholder="Asia/Muscat" /></Field>
         <Field label="Daily summary time (hour, 0–23)"><input type="number" min={0} max={23} value={s.dailyHour ?? 8} onChange={(e) => set({ dailyHour: +e.target.value })} /></Field>
         <div className="muted" style={{ alignSelf: 'end' }}>Telegram, email, QR codes and more: <a href="#/plugins" style={{ textDecoration: 'underline' }}>Plugins</a></div>
+        <Field label="Invoice number prefix (empty = plain numbers like 1213)"><input value={s.invoicePrefix ?? ''} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="e.g. INV" /></Field>
+        <Field label="Plain numbering starts at"><input type="number" value={s.invoiceStart ?? 1} onChange={(e) => set({ invoiceStart: +e.target.value })} /></Field>
+        <div />
+        <Field label="Payment & bank details (printed on invoices)" span={3}><textarea value={s.paymentInfo || ''} onChange={(e) => set({ paymentInfo: e.target.value })} /></Field>
         <Field label="Default quotation terms" span={3}><textarea value={s.quoteTerms} onChange={(e) => set({ quoteTerms: e.target.value })} /></Field>
       </div></div>}
 

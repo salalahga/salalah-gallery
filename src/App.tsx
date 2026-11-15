@@ -88,7 +88,7 @@ function Workspace() {
     <div className={`shell ${open ? 'nav-open' : ''}`}>
       <aside className="sidebar">
         <div className="brand" onClick={() => go(modules[0].id)}>
-          <div className="logo">{s.logo ? <img src={s.logo} alt="" /> : <svg viewBox="0 0 64 64"><path d="M14 44 L32 14 L50 44 Z" fill="none" stroke="currentColor" strokeWidth="6" strokeLinejoin="round" /><path d="M22 44h20" stroke="#e0a458" strokeWidth="6" strokeLinecap="round" /></svg>}</div>
+          <div className={`logo ${s.logoLight || s.logo ? 'has-img' : ''}`}>{s.logoLight || s.logo ? <img src={s.logoLight || s.logo} alt="" /> : <svg viewBox="0 0 64 64"><path d="M14 44 L32 14 L50 44 Z" fill="none" stroke="currentColor" strokeWidth="6" strokeLinejoin="round" /><path d="M22 44h20" stroke="#e0a458" strokeWidth="6" strokeLinecap="round" /></svg>}</div>
           <div><b>{s.businessName}</b><small>Workshop Manager</small></div>
         </div>
         <nav>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Trash2, Printer, MessageCircle, Hammer, Receipt, Copy, Eye } from 'lucide-react';
-import { store, useDB, nextNumber, today, uid } from '../core/store';
+import { store, useDB, nextNumber, nextInvoiceNumber, today, uid } from '../core/store';
 import { useRoute, go } from '../core/router';
 import type { Quotation, QuoteStatus } from '../core/types';
 import { docTotals, money, fmtDate } from '../core/calc';
@@ -27,7 +27,7 @@ export default function Quotations() {
     store.upsert('quotations', { ...qt, status: 'accepted', jobId: job.id }); toast('Job created from quotation'); go('jobs', { id: job.id });
   };
   const toInvoice = (qt: Quotation) => {
-    const inv = store.upsert('invoices', { number: nextNumber('INV', db.invoices.map((i) => i.number)), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), customerId: qt.customerId, title: qt.title, items: structuredClone(qt.items), discount: qt.discount, vat: qt.vat, paid: 0, quotationId: qt.id, jobId: qt.jobId });
+    const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), customerId: qt.customerId, title: qt.title, items: structuredClone(qt.items), discount: qt.discount, vat: qt.vat, paid: 0, quotationId: qt.id, jobId: qt.jobId });
     go('invoices', { id: inv.id });
   };
   const share = (qt: Quotation) => { const c = L.customer(qt.customerId); const tot = docTotals(qt); return waLink(c?.phone, wa('quote', { customer: c?.name, number: qt.number, title: qt.title, lines: qt.items.map((l) => `• ${l.description} — ${l.qty} ${l.unit} × ${l.rate}`).join('\n'), total: money(tot.total, s), valid: fmtDate(qt.validUntil), business: s.businessName, phone: s.phone })); };

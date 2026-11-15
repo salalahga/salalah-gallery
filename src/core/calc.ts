@@ -53,3 +53,30 @@ export function payrollCalc(db: DB, staffId: string, month: string) {
   const advance = db.advances.filter((a) => a.staffId === staffId && !a.recovered).reduce((n, a) => n + a.amount, 0);
   return { basic, daysPresent: days, overtimeHours: otHours, overtimePay, allowance: st.allowance || 0, advance };
 }
+
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+function words(n: number): string {
+  if (n === 0) return 'Zero';
+  const chunk = (x: number) => {
+    const h = Math.floor(x / 100), r = x % 100;
+    const t = r < 20 ? ONES[r] : TENS[Math.floor(r / 10)] + (r % 10 ? '-' + ONES[r % 10] : '');
+    return [h ? ONES[h] + ' Hundred' : '', t].filter(Boolean).join(' ');
+  };
+  const parts: string[] = [];
+  for (const [v, name] of [[1e9, 'Billion'], [1e6, 'Million'], [1e3, 'Thousand'], [1, '']] as const) {
+    const c = Math.floor(n / v) % 1000; if (c) parts.push(chunk(c) + (name ? ' ' + name : ''));
+  }
+  return parts.join(' ');
+}
+/** e.g. 300 OMR → "Three Hundred Omani Rials Only"; 12.5 → "Twelve Omani Rials and Five Hundred Baisa Only". */
+export function amountInWords(amount: number, currency: string) {
+  const names: Record<string, [string, string, number]> = {
+    OMR: ['Omani Rials', 'Baisa', 1000], AED: ['UAE Dirhams', 'Fils', 100], SAR: ['Saudi Riyals', 'Halalas', 100], QAR: ['Qatari Riyals', 'Dirhams', 100],
+    KWD: ['Kuwaiti Dinars', 'Fils', 1000], BHD: ['Bahraini Dinars', 'Fils', 1000], INR: ['Rupees', 'Paise', 100], USD: ['US Dollars', 'Cents', 100], EUR: ['Euros', 'Cents', 100],
+  };
+  const [major, minor, div] = names[currency] || [currency, 'cents', 100];
+  const total = Math.round((Number(amount) || 0) * div);
+  const a = Math.floor(total / div), b = total % div;
+  return `${words(a)} ${major}${b ? ` and ${words(b)} ${minor}` : ''} Only`;
+}

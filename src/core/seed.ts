@@ -4,13 +4,17 @@ const d = (offset: number) => { const x = new Date(); x.setDate(x.getDate() + of
 const ts = new Date().toISOString();
 
 export const defaultSettings: Settings = {
-  businessName: 'Salalah Gallery Woodworks', tagline: 'Custom carpentry, CNC cutting & interiors', phone: '+968 9000 0000', whatsapp: '96890000000',
-  email: 'info@example.com', address: 'Industrial Area', city: 'Salalah', country: 'Oman', currency: 'OMR', vatRate: 5, vatNumber: '', crNumber: '', lang: 'en',
+  businessName: 'Teraz Investment L.L.C', tagline: 'Carpentry, CNC & signboard works', phone: '+968 9808 2291', whatsapp: '96898082291',
+  email: '', address: 'P.O. Box 811, Postal Code 215', city: 'Salalah', country: 'Oman', currency: 'OMR', vatRate: 0, vatNumber: '', crNumber: '1360908', lang: 'en',
+  logo: '/teraz-logo.png', logoLight: '/teraz-logo-light.png', poBox: 'P.O. Box 811, Postal Code 215',
+  paymentInfo: 'Payment Mode - Cash or Cheque\nBank cheque can be issued in the name of Teraz Investment LLC\nBank Account Name: Teraz Investment LLC\nBank Name: Bank Muscat\nAccount No: 0423057913090018\nIBAN: OM400270423057913090018',
+  invoicePrefix: '', invoiceStart: 1212,
   workTypes: [
     { id: 'wt-cnc', name: 'CNC Work', color: '#2563eb', unit: 'sheet', rate: 25, fields: ['Design file', 'Material', 'Sheet size', 'Thickness (mm)', 'Machine hours', 'Bit / tool'] },
     { id: 'wt-carp', name: 'Carpentry', color: '#b45309', unit: 'job', rate: 0, fields: ['Item type', 'Dimensions (W×H×D)', 'Wood type', 'Hardware', 'Site address'] },
     { id: 'wt-board', name: 'Board Work', color: '#059669', unit: 'sheet', rate: 18, fields: ['Board type', 'Thickness (mm)', 'Sheets', 'Edge banding (m)', 'Colour / finish'] },
     { id: 'wt-polish', name: 'Polish & Paint', color: '#9333ea', unit: 'sqm', rate: 4, fields: ['Finish type', 'Colour code', 'Area (sqm)', 'Coats'] },
+    { id: 'wt-sign', name: 'Signboards', color: '#0891b2', unit: 'pcs', rate: 0, fields: ['Size (W×H)', 'Material (ACP / Acrylic / MDF)', 'Letters / design', 'Lighting (LED)', 'Installation height / site'] },
     { id: 'wt-install', name: 'Installation', color: '#dc2626', unit: 'visit', rate: 15, fields: ['Site address', 'Contact on site', 'Team size', 'Vehicle'] },
   ],
   expenseCategories: ['Materials', 'Boards & Sheets', 'Hardware', 'Salary', 'Rent', 'Electricity & Water', 'Fuel & Transport', 'Machine Maintenance', 'Tools', 'Marketing', 'Visa & Labour', 'Other'],
@@ -20,8 +24,8 @@ export const defaultSettings: Settings = {
   workHoursPerDay: 8, overtimeMultiplier: 1.25, workingDaysPerMonth: 26, timezone: 'Asia/Muscat', dailyHour: 8,
   plugins: { whatsapp: { enabled: true }, print: { enabled: true }, maps: { enabled: true }, export: { enabled: true } },
   website: {
-    hero: 'Handcrafted furniture, precise CNC cutting and complete interior woodwork.',
-    about: 'We are a full-service carpentry workshop delivering kitchens, wardrobes, doors, CNC panels and custom furniture with quality materials and on-time installation.',
+    hero: 'Carpentry, precise CNC cutting, signboards and complete interior woodwork in Salalah.',
+    about: 'Teraz Investment L.L.C is a Salalah workshop delivering carpentry, CNC work, signboards and custom furniture with quality materials and on-time installation.',
     theme: 'walnut', gallery: [
       'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800',
       'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800',

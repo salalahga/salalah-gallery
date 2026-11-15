@@ -350,3 +350,9 @@ code { background: var(--panel-2); border-radius: 5px; padding: 1px 5px; font-si
 .jobcard { font-size: 14px; } .jobcard h2 { font-size: 26px; } .jobcard table td { padding: 6px 8px; border-bottom: 1px solid #eee; }
 .jobcard .big { font-size: 34px; font-weight: 800; letter-spacing: .02em; font-family: Fraunces, serif; color: #7c4a1e; }
 .jobcard .checks span { display: inline-block; border: 1.5px solid #333; width: 14px; height: 14px; margin-right: 6px; vertical-align: -2px; }
+.doc { position: relative; overflow: hidden; }
+.doc > * { position: relative; }
+.doc .doc-watermark { position: absolute; left: 50%; top: 55%; width: 70%; transform: translate(-50%, -50%); opacity: .05; pointer-events: none; z-index: 0; }
+.doc-words { margin: 10px 0 0; font-size: 12.5px; color: #444; }
+.logo.has-img { background: transparent; } .logo.has-img img { object-fit: contain; }
+@media print { .doc .doc-watermark { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

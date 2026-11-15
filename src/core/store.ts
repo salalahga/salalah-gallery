@@ -196,6 +196,14 @@ export function nextNumber(prefix: string, existing: string[]): string {
   return `${prefix}-${year}-${String(next).padStart(4, '0')}`;
 }
 
+/** Next invoice number. Plain numbering (1212, 1213…) when the prefix is empty, else PREFIX-YEAR-0001. */
+export function nextInvoiceNumber(): string {
+  const s = db.settings; const nums = db.invoices.map((i) => i.number);
+  if (s.invoicePrefix === undefined || s.invoicePrefix) return nextNumber(s.invoicePrefix || 'INV', nums);
+  const n = nums.map((x) => parseInt(String(x).replace(/\D/g, ''), 10)).filter((x) => !isNaN(x) && x < 1e7);
+  return String(Math.max((s.invoiceStart || 1) - 1, ...n) + 1);
+}
+
 export function exportBackup() {
   const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');

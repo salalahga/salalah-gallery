@@ -1,7 +1,7 @@
 // Service worker: lets the installed app open without internet. API calls are never cached —
 // the app's own offline outbox handles data. Bump VERSION to drop old caches.
-const VERSION = 'ww-v1';
-const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.svg', '/icon-192.png', '/icon-512.png'];
+const VERSION = 'ww-v2';
+const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/favicon.png', '/teraz-logo.png', '/teraz-logo-light.png', '/icon-192.png', '/icon-512.png'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(VERSION).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
