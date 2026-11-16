@@ -4,23 +4,29 @@ const d = (offset: number) => { const x = new Date(); x.setDate(x.getDate() + of
 const ts = new Date().toISOString();
 
 export const defaultSettings: Settings = {
-  businessName: 'Salalah Gallery Woodworks', tagline: 'Custom carpentry, CNC cutting & interiors', phone: '+968 9000 0000', whatsapp: '96890000000',
-  email: 'info@example.com', address: 'Industrial Area', city: 'Salalah', country: 'Oman', currency: 'OMR', vatRate: 5, vatNumber: '', crNumber: '', lang: 'en',
+  businessName: 'Teraz Investment L.L.C', tagline: 'Carpentry, CNC & signboard works', phone: '+968 9808 2291', whatsapp: '96898082291',
+  email: '', address: 'P.O. Box 811, Postal Code 215', city: 'Salalah', country: 'Oman', currency: 'OMR', vatRate: 0, vatNumber: '', crNumber: '1360908',
+  logo: '/teraz-logo.png', logoLight: '/teraz-logo-light.png', poBox: 'P.O. Box 811, Postal Code 215',
+  paymentInfo: 'Payment Mode - Cash or Cheque\nBank cheque can be issued in the name of Teraz Investment LLC\nBank Account Name: Teraz Investment LLC\nBank Name: Bank Muscat\nAccount No: 0423057913090018\nIBAN: OM400270423057913090018',
+  invoicePrefix: '', invoiceStart: 1212,
+  businessNameAr: 'تيراز للاستثمار ش.م.م', addressAr: 'ص.ب ٨١١، الرمز البريدي ٢١٥، صلالة، سلطنة عمان', arabicOnDocs: true, docExpiryDays: 30,
   workTypes: [
     { id: 'wt-cnc', name: 'CNC Work', color: '#2563eb', unit: 'sheet', rate: 25, fields: ['Design file', 'Material', 'Sheet size', 'Thickness (mm)', 'Machine hours', 'Bit / tool'] },
     { id: 'wt-carp', name: 'Carpentry', color: '#b45309', unit: 'job', rate: 0, fields: ['Item type', 'Dimensions (W×H×D)', 'Wood type', 'Hardware', 'Site address'] },
     { id: 'wt-board', name: 'Board Work', color: '#059669', unit: 'sheet', rate: 18, fields: ['Board type', 'Thickness (mm)', 'Sheets', 'Edge banding (m)', 'Colour / finish'] },
     { id: 'wt-polish', name: 'Polish & Paint', color: '#9333ea', unit: 'sqm', rate: 4, fields: ['Finish type', 'Colour code', 'Area (sqm)', 'Coats'] },
+    { id: 'wt-sign', name: 'Signboards', color: '#0891b2', unit: 'pcs', rate: 0, fields: ['Size (W×H)', 'Material (ACP / Acrylic / MDF)', 'Letters / design', 'Lighting (LED)', 'Installation height / site'] },
     { id: 'wt-install', name: 'Installation', color: '#dc2626', unit: 'visit', rate: 15, fields: ['Site address', 'Contact on site', 'Team size', 'Vehicle'] },
   ],
-  expenseCategories: ['Materials', 'Boards & Sheets', 'Hardware', 'Salary', 'Rent', 'Electricity & Water', 'Fuel & Transport', 'Machine Maintenance', 'Tools', 'Marketing', 'Visa & Labour', 'Other'],
+  expenseCategories: ['Materials', 'Boards & Sheets', 'Hardware', 'Labour', 'Subcontractor', 'Salary', 'Rent', 'Electricity & Water', 'Fuel & Transport', 'Machine Maintenance', 'Tools', 'Marketing', 'Visa & Labour', 'Other'],
   incomeCategories: ['Job Payment', 'Product Sale', 'CNC Service', 'Advance', 'Other'],
   roles: ['Carpenter', 'CNC Operator', 'Helper', 'Polisher', 'Supervisor', 'Designer', 'Driver', 'Accountant'],
   quoteTerms: '50% advance to confirm the order. Balance on delivery.\nQuotation valid for 15 days.\nDelivery time starts after design approval.',
-  workHoursPerDay: 8, overtimeMultiplier: 1.25, workingDaysPerMonth: 26,
+  workHoursPerDay: 8, overtimeMultiplier: 1.25, workingDaysPerMonth: 26, timezone: 'Asia/Muscat', dailyHour: 8,
+  plugins: { whatsapp: { enabled: true }, print: { enabled: true }, maps: { enabled: true }, export: { enabled: true } },
   website: {
-    hero: 'Handcrafted furniture, precise CNC cutting and complete interior woodwork.',
-    about: 'We are a full-service carpentry workshop delivering kitchens, wardrobes, doors, CNC panels and custom furniture with quality materials and on-time installation.',
+    hero: 'Carpentry, precise CNC cutting, signboards and complete interior woodwork in Salalah.',
+    about: 'Teraz Investment L.L.C is a Salalah workshop delivering carpentry, CNC work, signboards and custom furniture with quality materials and on-time installation.',
     theme: 'walnut', gallery: [
       'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800',
       'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800',
@@ -28,6 +34,10 @@ export const defaultSettings: Settings = {
     ], showProducts: true, mapUrl: '',
   },
 };
+
+export function emptyDB(): Omit<DB, 'settings'> {
+  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [] };
+}
 
 export function seed(): DB {
   return {
@@ -38,7 +48,7 @@ export function seed(): DB {
       { id: 'c3', createdAt: ts, name: 'Fatima Al Kathiri', phone: '+968 9988 7766', address: 'Awqad', type: 'Individual' },
     ],
     staff: [
-      { id: 's1', createdAt: ts, name: 'Rajesh Kumar', role: 'Carpenter', phone: '+968 9500 1111', nationality: 'Indian', salaryType: 'monthly', rate: 220, allowance: 20, skills: ['Kitchen', 'Wardrobe', 'Doors'], active: true, color: '#b45309', joinDate: '2022-03-01' },
+      { id: 's1', createdAt: ts, name: 'Rajesh Kumar', role: 'Carpenter', phone: '+968 9500 1111', nationality: 'Indian', salaryType: 'monthly', rate: 220, allowance: 20, skills: ['Kitchen', 'Wardrobe', 'Doors'], active: true, color: '#b45309', joinDate: '2022-03-01', documents: [{ id: 'd1', type: 'Resident card', number: 'RC-12345678', expiry: d(12) }, { id: 'd2', type: 'Passport', number: 'P1234567', expiry: d(400) }] },
       { id: 's2', createdAt: ts, name: 'Anil Thomas', role: 'CNC Operator', phone: '+968 9500 2222', nationality: 'Indian', salaryType: 'monthly', rate: 260, allowance: 25, skills: ['CNC', 'AutoCAD', 'Aspire'], active: true, color: '#2563eb', joinDate: '2023-01-15' },
       { id: 's3', createdAt: ts, name: 'Shafeeq M', role: 'Polisher', phone: '+968 9500 3333', nationality: 'Indian', salaryType: 'daily', rate: 9, allowance: 0, skills: ['PU', 'Lacquer'], active: true, color: '#9333ea', joinDate: '2024-06-10' },
       { id: 's4', createdAt: ts, name: 'Babu Raj', role: 'Helper', phone: '+968 9500 4444', nationality: 'Indian', salaryType: 'daily', rate: 7, allowance: 0, skills: ['Loading', 'Assembly'], active: true, color: '#059669', joinDate: '2024-09-01' },
@@ -67,8 +77,8 @@ export function seed(): DB {
         items: [{ id: 'l5', description: '50% advance — kitchen cabinets', qty: 1, unit: 'lot', rate: 900 }] },
     ],
     txns: [
-      { id: 'x1', createdAt: ts, date: d(-10), kind: 'income', category: 'Advance', amount: 900, method: 'Bank', description: 'Advance — Kitchen Villa 12', ref: 'INV-0001' },
-      { id: 'x2', createdAt: ts, date: d(-8), kind: 'expense', category: 'Boards & Sheets', amount: 340, method: 'Cash', description: '20 sheets marine ply' },
+      { id: 'x1', createdAt: ts, date: d(-10), kind: 'income', category: 'Advance', amount: 900, method: 'Bank', description: 'Advance — Kitchen Villa 12', ref: 'INV-0001', jobId: 'j1' },
+      { id: 'x2', createdAt: ts, date: d(-8), kind: 'expense', category: 'Boards & Sheets', amount: 340, method: 'Cash', description: '20 sheets marine ply', jobId: 'j1' },
       { id: 'x3', createdAt: ts, date: d(-6), kind: 'expense', category: 'Electricity & Water', amount: 85, method: 'Bank', description: 'Workshop electricity' },
       { id: 'x4', createdAt: ts, date: d(-4), kind: 'income', category: 'Product Sale', amount: 65, method: 'Cash', description: 'Walk-in sale' },
       { id: 'x5', createdAt: ts, date: d(-35), kind: 'income', category: 'Job Payment', amount: 1200, method: 'Bank', description: 'Office partitions' },
@@ -97,5 +107,10 @@ export function seed(): DB {
       { id: 'sp1', createdAt: ts, title: 'Kitchen reveal', caption: 'Fresh kitchen delivered in Al Saada ✨ Marine ply + HPL, soft-close everything. DM for a free quote!', platforms: ['Instagram', 'Facebook'], date: d(2), status: 'scheduled' },
       { id: 'sp2', createdAt: ts, title: 'CNC process reel', caption: 'Watch our CNC carve an Arabic jali pattern in 18mm MDF 🔥', platforms: ['Instagram', 'TikTok'], date: d(5), status: 'draft' },
     ],
+    suppliers: [
+      { id: 'sup1', createdAt: ts, name: 'Dhofar Timber Trading', phone: '+968 2329 0000', category: 'Boards & Sheets', address: 'Industrial Area, Salalah' },
+      { id: 'sup2', createdAt: ts, name: 'Gulf ACP & Acrylic', phone: '+968 9911 2233', category: 'Signage materials' },
+    ],
+    purchases: [], receipts: [], deliveries: [], measurements: [],
   };
 }

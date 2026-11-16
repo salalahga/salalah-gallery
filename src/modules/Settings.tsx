@@ -1,34 +1,26 @@
 import { useRef, useState } from 'react';
-import { Plus, Trash2, Download, Upload, RotateCcw, Plug } from 'lucide-react';
+import { Plus, Trash2, Download, Upload, RotateCcw } from 'lucide-react';
 import { store, useDB, exportBackup, uid } from '../core/store';
 import type { WorkType, DB } from '../core/types';
-import { PageHeader, Field, Tabs, toast, Badge } from '../components/ui';
+import { PageHeader, Field, Tabs, toast } from '../components/ui';
 import { useT } from '../core/i18n';
+import Users from './Users';
 
-const INTEGRATIONS = [
-  { name: 'WhatsApp', area: 'Customers & staff', status: 'Built in', desc: 'Send quotations, invoices, job updates and task assignments as WhatsApp messages.' },
-  { name: 'Print / PDF', area: 'Documents', status: 'Built in', desc: 'Quotations, invoices, payslips and receipts print or save as PDF.' },
-  { name: 'Facebook · X · LinkedIn share', area: 'Social', status: 'Built in', desc: 'One-click share from the post planner.' },
-  { name: 'QuickBooks', area: 'Accounts / Payroll', status: 'Available via Claude', desc: 'Sync invoices, expenses and payroll to QuickBooks Online.' },
-  { name: 'Metricool / Postiz', area: 'Social', status: 'Available via Claude', desc: 'Auto-publish scheduled posts and pull analytics for Instagram, Facebook, TikTok.' },
-  { name: 'Canva / Adobe Express', area: 'Social', status: 'Available via Claude', desc: 'Design post graphics and brochures for your jobs.' },
-  { name: 'Netlify / Hostinger / Wix', area: 'Website', status: 'Available via Claude', desc: 'Publish the generated website on your own domain.' },
-  { name: 'Google Sheets / Drive', area: 'Backup & reports', status: 'Available via Claude', desc: 'Export accounts, payroll and job reports to Sheets.' },
-];
+
 
 export default function SettingsPage() {
   const db = useDB(); const s = db.settings; const t = useT();
-  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'integrations' | 'data'>('business');
+  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'users' | 'data'>('business');
   const fileRef = useRef<HTMLInputElement>(null);
   const set = store.setSettings;
   const setWT = (i: number, p: Partial<WorkType>) => set({ workTypes: s.workTypes.map((w, k) => (k === i ? { ...w, ...p } : w)) });
-  const restore = (f: File) => { const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(String(r.result)) as DB; if (!d.settings) throw 0; store.replace(d); toast('Backup restored'); } catch { toast('Invalid backup file'); } }; r.readAsText(f); };
+  const restore = (f: File) => { const r = new FileReader(); r.onload = () => { try { const d = JSON.parse(String(r.result)) as DB; if (!d.settings) throw 0; store.replace(d).then(() => toast('Backup restored'), (e) => toast(e.message)); } catch { toast('Invalid backup file'); } }; r.readAsText(f); };
   const logo = (f: File) => { const r = new FileReader(); r.onload = () => set({ logo: String(r.result) }); r.readAsDataURL(f); };
 
   return (
     <>
       <PageHeader title={t('Settings')} sub="Business profile, work types, lists, integrations and backup." />
-      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'integrations', label: 'Integrations' }, { id: 'data', label: 'Backup' }]} /></div>
+      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'users', label: 'Users & logins' }, { id: 'data', label: 'Backup' }]} /></div>
 
       {tab === 'business' && <div className="card"><div className="form">
         <Field label="Business name" span={2}><input value={s.businessName} onChange={(e) => set({ businessName: e.target.value })} /></Field>
@@ -44,7 +36,18 @@ export default function SettingsPage() {
         <Field label="VAT %"><input type="number" value={s.vatRate} onChange={(e) => set({ vatRate: +e.target.value })} /></Field>
         <Field label="VAT number"><input value={s.vatNumber} onChange={(e) => set({ vatNumber: e.target.value })} /></Field>
         <Field label="CR / licence number"><input value={s.crNumber} onChange={(e) => set({ crNumber: e.target.value })} /></Field>
-        <Field label="Language"><select value={s.lang} onChange={(e) => set({ lang: e.target.value as 'en' | 'ml' })}><option value="en">English</option><option value="ml">മലയാളം (Malayalam)</option></select></Field>
+        <Field label="Time zone"><input value={s.timezone || 'Asia/Muscat'} onChange={(e) => set({ timezone: e.target.value })} placeholder="Asia/Muscat" /></Field>
+        <Field label="Daily summary time (hour, 0–23)"><input type="number" min={0} max={23} value={s.dailyHour ?? 8} onChange={(e) => set({ dailyHour: +e.target.value })} /></Field>
+        <div className="muted" style={{ alignSelf: 'end' }}>Telegram, email, QR codes and more: <a href="#/plugins" style={{ textDecoration: 'underline' }}>Plugins</a></div>
+        <Field label="Company name in Arabic"><input dir="rtl" value={s.businessNameAr || ''} onChange={(e) => set({ businessNameAr: e.target.value })} /></Field>
+        <Field label="Address in Arabic"><input dir="rtl" value={s.addressAr || ''} onChange={(e) => set({ addressAr: e.target.value })} /></Field>
+        <Field label="Arabic on printed documents"><select value={s.arabicOnDocs === false ? '0' : '1'} onChange={(e) => set({ arabicOnDocs: e.target.value === '1' })}><option value="1">Yes — English + Arabic</option><option value="0">English only</option></select></Field>
+        <Field label="Warn before staff documents expire (days)"><input type="number" value={s.docExpiryDays ?? 30} onChange={(e) => set({ docExpiryDays: +e.target.value })} /></Field>
+        <div /><div />
+        <Field label="Invoice number prefix (empty = plain numbers like 1213)"><input value={s.invoicePrefix ?? ''} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="e.g. INV" /></Field>
+        <Field label="Plain numbering starts at"><input type="number" value={s.invoiceStart ?? 1} onChange={(e) => set({ invoiceStart: +e.target.value })} /></Field>
+        <div />
+        <Field label="Payment & bank details (printed on invoices)" span={3}><textarea value={s.paymentInfo || ''} onChange={(e) => set({ paymentInfo: e.target.value })} /></Field>
         <Field label="Default quotation terms" span={3}><textarea value={s.quoteTerms} onChange={(e) => set({ quoteTerms: e.target.value })} /></Field>
       </div></div>}
 
@@ -78,17 +81,16 @@ export default function SettingsPage() {
         </div></div>
       </div>}
 
-      {tab === 'integrations' && <div className="card"><h3><span className="flex"><Plug size={17} />Connectors</span></h3>
-        <div className="grid g2">{INTEGRATIONS.map((x) => <div key={x.name} className="integ"><div style={{ flex: 1 }}><b>{x.name}</b><span className="muted">{x.area}</span><p style={{ margin: '6px 0 0', fontSize: 13.5 }}>{x.desc}</p></div><Badge tone={x.status === 'Built in' ? 'green' : 'blue'}>{x.status}</Badge></div>)}</div>
-        <p className="muted" style={{ marginTop: 14 }}>“Available via Claude” connectors work by asking Claude, e.g. “sync this month’s invoices to QuickBooks” or “publish my website to Netlify”. Live in-app sync needs a small server and your account keys — the module system is ready for it.</p>
-      </div>}
+      
+
+      {tab === 'users' && <Users />}
 
       {tab === 'data' && <div className="grid g3">
-        <div className="card"><h3>Backup</h3><p className="muted">Data is stored in this browser. Download a backup regularly.</p><button className="btn primary" onClick={exportBackup}><Download size={16} />Download backup</button></div>
+        <div className="card"><h3>Backup</h3><p className="muted">{store.mode === 'server' ? 'Data is stored in the online database. A backup file is still a good safety copy.' : 'Data is stored in this browser. Download a backup regularly.'}</p><button className="btn primary" onClick={exportBackup}><Download size={16} />Download backup</button></div>
         <div className="card"><h3>Restore</h3><p className="muted">Load a backup file (replaces current data).</p><input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} /><button className="btn" onClick={() => fileRef.current?.click()}><Upload size={16} />Restore backup</button></div>
         <div className="card"><h3>Start fresh</h3><p className="muted">Remove demo data and start with your own.</p><div className="flex wrap">
-          <button className="btn danger" onClick={() => window.confirm('Delete ALL records and keep settings defaults?') && (store.reset(true), toast('All data cleared'))}><Trash2 size={16} />Clear all</button>
-          <button className="btn" onClick={() => window.confirm('Reload demo data?') && (store.reset(false), toast('Demo data loaded'))}><RotateCcw size={16} />Demo data</button></div></div>
+          <button className="btn danger" onClick={() => window.confirm('Delete ALL records and keep settings defaults?') && store.reset(true).then(() => toast('All data cleared'), (e) => toast(e.message))}><Trash2 size={16} />Clear all</button>
+          <button className="btn" onClick={() => window.confirm('Reload demo data?') && store.reset(false).then(() => toast('Demo data loaded'), (e) => toast(e.message))}><RotateCcw size={16} />Demo data</button></div></div>
       </div>}
     </>
   );

@@ -6,9 +6,11 @@ import { docTotals, invoiceBalance, money } from '../core/calc';
 import { waLink } from '../core/helpers';
 import { Modal, Field, PageHeader, SearchBox, Avatar, Empty, Badge, toast, confirmDelete } from '../components/ui';
 import { useT } from '../core/i18n';
+import { usePlugin, mapsLink } from '../plugins/hooks';
+import { MapPin } from 'lucide-react';
 
 export default function Customers() {
-  const db = useDB(); const s = db.settings; const t = useT();
+  const db = useDB(); const s = db.settings; const t = useT(); const maps = usePlugin('maps').enabled;
   const [q, setQ] = useState(''); const [edit, setEdit] = useState<Partial<Customer> | null>(null);
   const list = db.customers.filter((c) => (c.name + c.phone + c.email).toLowerCase().includes(q.toLowerCase()));
   const stats = (id: string) => ({
@@ -32,6 +34,7 @@ export default function Customers() {
                 {c.phone && <a className="icon-btn" href={`tel:${c.phone}`} title="Call"><Phone size={16} /></a>}
                 {c.phone && <a className="icon-btn" target="_blank" rel="noreferrer" href={waLink(c.phone, `Hello ${c.name}, `)} title="WhatsApp"><MessageCircle size={16} /></a>}
                 {c.email && <a className="icon-btn" href={`mailto:${c.email}`} title="Email"><Mail size={16} /></a>}
+                {maps && c.address && <a className="icon-btn" target="_blank" rel="noreferrer" href={mapsLink(c.address)} title="Directions"><MapPin size={16} /></a>}
               </div></td>
             </tr>); })}</tbody></table></div> : <Empty title="No customers yet" action={<button className="btn primary" onClick={() => setEdit({})}>Add customer</button>} />}
       </div>

@@ -1,4 +1,4 @@
-import type { DB, Invoice, LineItem, Quotation, Settings } from './types';
+import type { DB, Invoice, Job, LineItem, Quotation, Settings } from './types';
 
 export const lineTotal = (l: LineItem) => (Number(l.qty) || 0) * (Number(l.rate) || 0);
 export function docTotals(d: Pick<Quotation | Invoice, 'items' | 'discount' | 'vat'>) {
@@ -52,4 +52,51 @@ export function payrollCalc(db: DB, staffId: string, month: string) {
   const overtimePay = otHours * hourly * s.overtimeMultiplier;
   const advance = db.advances.filter((a) => a.staffId === staffId && !a.recovered).reduce((n, a) => n + a.amount, 0);
   return { basic, daysPresent: days, overtimeHours: otHours, overtimePay, allowance: st.allowance || 0, advance };
+}
+
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+function words(n: number): string {
+  if (n === 0) return 'Zero';
+  const chunk = (x: number) => {
+    const h = Math.floor(x / 100), r = x % 100;
+    const t = r < 20 ? ONES[r] : TENS[Math.floor(r / 10)] + (r % 10 ? '-' + ONES[r % 10] : '');
+    return [h ? ONES[h] + ' Hundred' : '', t].filter(Boolean).join(' ');
+  };
+  const parts: string[] = [];
+  for (const [v, name] of [[1e9, 'Billion'], [1e6, 'Million'], [1e3, 'Thousand'], [1, '']] as const) {
+    const c = Math.floor(n / v) % 1000; if (c) parts.push(chunk(c) + (name ? ' ' + name : ''));
+  }
+  return parts.join(' ');
+}
+/** e.g. 300 OMR → "Three Hundred Omani Rials Only"; 12.5 → "Twelve Omani Rials and Five Hundred Baisa Only". */
+export function amountInWords(amount: number, currency: string) {
+  const names: Record<string, [string, string, number]> = {
+    OMR: ['Omani Rials', 'Baisa', 1000], AED: ['UAE Dirhams', 'Fils', 100], SAR: ['Saudi Riyals', 'Halalas', 100], QAR: ['Qatari Riyals', 'Dirhams', 100],
+    KWD: ['Kuwaiti Dinars', 'Fils', 1000], BHD: ['Bahraini Dinars', 'Fils', 1000], INR: ['Rupees', 'Paise', 100], USD: ['US Dollars', 'Cents', 100], EUR: ['Euros', 'Cents', 100],
+  };
+  const [major, minor, div] = names[currency] || [currency, 'cents', 100];
+  const total = Math.round((Number(amount) || 0) * div);
+  const a = Math.floor(total / div), b = total % div;
+  return `${words(a)} ${major}${b ? ` and ${words(b)} ${minor}` : ''} Only`;
+}
+
+/** Project (job) accounts: contract value incl. additional work, money collected, expenses and profit. */
+export function projectFinance(db: DB, job: Pick<Job, 'id' | 'value' | 'extras' | 'materials'>) {
+  const base = Number(job.value) || 0;
+  const extras = (job.extras || []).reduce((n, e) => n + (Number(e.amount) || 0), 0);
+  const contract = base + extras;
+  const txns = db.txns.filter((t) => t.jobId === job.id);
+  const collected = txns.filter((t) => t.kind === 'income').reduce((n, t) => n + t.amount, 0);
+  const spent = txns.filter((t) => t.kind === 'expense').reduce((n, t) => n + t.amount, 0);
+  const materials = (job.materials || []).reduce((n, m) => n + (Number(m.issued) || 0) * (db.items.find((i) => i.id === m.itemId)?.cost || 0), 0);
+  const expenses = spent + materials;
+  const invoiced = db.invoices.filter((i) => i.jobId === job.id).reduce((n, i) => n + docTotals(i).total, 0);
+  const byCategory: Record<string, number> = {};
+  txns.filter((t) => t.kind === 'expense').forEach((t) => (byCategory[t.category] = (byCategory[t.category] || 0) + t.amount));
+  if (materials) byCategory['Materials from stock'] = (byCategory['Materials from stock'] || 0) + materials;
+  return {
+    base, extras, contract, collected, toCollect: Math.max(0, contract - collected), spent, materials, expenses, invoiced,
+    profit: contract - expenses, cash: collected - expenses, margin: contract ? (contract - expenses) / contract : 0, byCategory,
+  };
 }

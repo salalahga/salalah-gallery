@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useRoute, go } from '../core/router';
 import { Plus, Trash2, ChevronLeft, ChevronRight, Copy, ExternalLink, Sparkles, Users } from 'lucide-react';
 import { store, useDB, today } from '../core/store';
 import type { SocialAccount, SocialPost } from '../core/types';
@@ -31,10 +32,20 @@ export default function Social() {
   const cells = Array.from({ length: 42 }, (_, i) => { const d = new Date(start); d.setDate(start.getDate() + i); return d.toISOString().slice(0, 10); });
   const savePost = () => { if (!post?.title) return toast('Give the post a title'); store.upsert('socialPosts', post as SocialPost); setPost(null); toast('Post saved'); };
   const saveAcc = () => { if (!acc?.platform || !acc.handle) return toast('Platform and handle required'); store.upsert('socialAccounts', acc as SocialAccount); setAcc(null); toast('Account connected'); };
-  const fromJob = (jobId: string) => {
+  const { params } = useRoute();
+  useEffect(() => {
+    if (params.new !== 'photo') return;
+    let shared: { url?: string; jobId?: string } = {};
+    try { shared = JSON.parse(sessionStorage.getItem('ww-share-photo') || '{}'); sessionStorage.removeItem('ww-share-photo'); } catch { /* */ }
+    const base: Partial<SocialPost> = { date: today(), status: 'draft', platforms: ['Instagram', 'Facebook'], caption: '', image: shared.url };
+    setPost(base);
+    if (shared.jobId) setTimeout(() => fromJob(shared.jobId!, base), 0);
+    go('social');
+  }, [params.new]); // eslint-disable-line
+  const fromJob = (jobId: string, base?: Partial<SocialPost>) => {
     const j = L.job(jobId); if (!j) return; const w = L.workType(j.workTypeId);
     const lines = Object.entries(j.details).filter(([, v]) => v).slice(0, 3).map(([k, v]) => `▫️ ${k}: ${v}`).join('\n');
-    setPost({ ...post, jobId, title: j.title, caption: `✨ Just finished: ${j.title}!\n${w ? `Our ${w.name.toLowerCase()} team delivered another quality project.` : ''}\n${lines}\n\n📍 ${s.city} · 📞 ${s.phone}\n💬 DM or WhatsApp us for a free quotation.\n\n${TAGS}` });
+    setPost({ ...(base || post), jobId, title: j.title, caption: `✨ Just finished: ${j.title}!\n${w ? `Our ${w.name.toLowerCase()} team delivered another quality project.` : ''}\n${lines}\n\n📍 ${s.city} · 📞 ${s.phone}\n💬 DM or WhatsApp us for a free quotation.\n\n${TAGS}` });
   };
   const followers = db.socialAccounts.reduce((n, a) => n + (a.followers || 0), 0);
   const upcoming = db.socialPosts.filter((p) => p.date >= today() && p.status !== 'posted').length;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, Printer, MessageCircle, Hammer, Receipt, Copy, Eye } from 'lucide-react';
-import { store, useDB, nextNumber, today, uid } from '../core/store';
+import { Plus, Trash2, Printer, MessageCircle, Hammer, Receipt, Copy, Eye, HandCoins } from 'lucide-react';
+import { store, useDB, nextNumber, nextInvoiceNumber, today, uid, takeAdvances } from '../core/store';
 import { useRoute, go } from '../core/router';
 import type { Quotation, QuoteStatus } from '../core/types';
 import { docTotals, money, fmtDate } from '../core/calc';
@@ -9,14 +9,18 @@ import { Modal, Field, PageHeader, Badge, Empty, Tabs, SearchBox, Stat, toast, c
 import { LinesEditor, DocView } from '../components/DocEditor';
 import { FileText, CheckCircle2, Send } from 'lucide-react';
 import { useT } from '../core/i18n';
+import { useWaText } from '../plugins/hooks';
 
 export default function Quotations() {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute();
+  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute(); const wa = useWaText();
   const [edit, setEdit] = useState<Partial<Quotation> | null>(null);
   const [view, setView] = useState<Quotation | null>(null);
   const [tab, setTab] = useState<'all' | QuoteStatus>('all'); const [q, setQ] = useState('');
   const blank = (): Partial<Quotation> => ({ number: nextNumber('QT', db.quotations.map((x) => x.number)), date: today(), validUntil: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), status: 'draft', discount: 0, vat: s.vatRate, terms: s.quoteTerms, items: [{ id: uid(), description: '', qty: 1, unit: 'pcs', rate: 0 }], title: '' });
-  useEffect(() => { if (params.new) { setEdit(blank()); go('quotations'); } }, [params.new]); // eslint-disable-line
+  useEffect(() => {
+    if (params.new) { setEdit(blank()); go('quotations'); }
+    if (params.id) { const x = db.quotations.find((y) => y.id === params.id); if (x) setEdit(structuredClone(x)); go('quotations'); }
+  }, [params.new, params.id]); // eslint-disable-line
 
   const list = db.quotations.filter((x) => (tab === 'all' || x.status === tab) && (x.number + x.title + (L.customer(x.customerId)?.name || '')).toLowerCase().includes(q.toLowerCase()));
   const save = () => { if (!edit?.customerId) return toast('Select a customer'); const saved = store.upsert('quotations', edit as Quotation); setEdit(null); toast('Quotation saved'); return saved; };
@@ -26,10 +30,12 @@ export default function Quotations() {
     store.upsert('quotations', { ...qt, status: 'accepted', jobId: job.id }); toast('Job created from quotation'); go('jobs', { id: job.id });
   };
   const toInvoice = (qt: Quotation) => {
-    const inv = store.upsert('invoices', { number: nextNumber('INV', db.invoices.map((i) => i.number)), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), customerId: qt.customerId, title: qt.title, items: structuredClone(qt.items), discount: qt.discount, vat: qt.vat, paid: 0, quotationId: qt.id, jobId: qt.jobId });
+    const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), customerId: qt.customerId, title: qt.title, items: structuredClone(qt.items), discount: qt.discount, vat: qt.vat, paid: 0, quotationId: qt.id, jobId: qt.jobId });
+    const adv = takeAdvances(inv.id, qt.jobId, qt.id);
+    if (adv) { store.upsert('invoices', { ...inv, paid: adv }); toast(`Advance ${money(adv, s)} already received — shown as paid`); }
     go('invoices', { id: inv.id });
   };
-  const share = (qt: Quotation) => { const c = L.customer(qt.customerId); const tot = docTotals(qt); return waLink(c?.phone, `Dear ${c?.name},\nPlease find our quotation ${qt.number} for "${qt.title}".\n\n${qt.items.map((l) => `• ${l.description} — ${l.qty} ${l.unit} × ${l.rate}`).join('\n')}\n\nTotal (incl. VAT): ${money(tot.total, s)}\nValid until ${fmtDate(qt.validUntil)}.\n\nThank you,\n${s.businessName}\n${s.phone}`); };
+  const share = (qt: Quotation) => { const c = L.customer(qt.customerId); const tot = docTotals(qt); return waLink(c?.phone, wa('quote', { customer: c?.name, number: qt.number, title: qt.title, lines: qt.items.map((l) => `• ${l.description} — ${l.qty} ${l.unit} × ${l.rate}`).join('\n'), total: money(tot.total, s), valid: fmtDate(qt.validUntil), business: s.businessName, phone: s.phone })); };
   const sum = (st: QuoteStatus) => db.quotations.filter((x) => x.status === st).reduce((n, x) => n + docTotals(x).total, 0);
   const won = db.quotations.filter((x) => x.status === 'accepted').length; const decided = db.quotations.filter((x) => ['accepted', 'rejected'].includes(x.status)).length;
 
@@ -57,6 +63,7 @@ export default function Quotations() {
                 <a className="icon-btn" title="WhatsApp" target="_blank" rel="noreferrer" href={share(x)} onClick={() => x.status === 'draft' && store.upsert('quotations', { ...x, status: 'sent' })}><MessageCircle size={16} /></a>
                 {!x.jobId && <button className="icon-btn" title="Convert to job" onClick={() => toJob(x)}><Hammer size={16} /></button>}
                 <button className="icon-btn" title="Convert to invoice" onClick={() => toInvoice(x)}><Receipt size={16} /></button>
+                <button className="icon-btn" title="Advance receipt" onClick={() => go('documents', { receipt: 'new', quotation: x.id })}><HandCoins size={16} /></button>
               </div></td>
             </tr>))}</tbody></table></div> : <Empty title="No quotations" action={<button className="btn primary" onClick={() => setEdit(blank())}>Create quotation</button>} />}
       </div>
