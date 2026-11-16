@@ -10,6 +10,11 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT NOT NULL, username TEXT NOT NULL UNIQUE, hash TEXT NOT NULL, role TEXT NOT NULL, staff_id TEXT, active INTEGER NOT NULL DEFAULT 1, created_at BIGINT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at BIGINT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS automation_log (id TEXT PRIMARY KEY, at BIGINT NOT NULL, rule TEXT NOT NULL, trig TEXT NOT NULL, ok INTEGER NOT NULL, detail TEXT)`,
+  // photos live here instead of inside records, so syncing data stays small and fast
+  `CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, mime TEXT NOT NULL, data TEXT NOT NULL, size INTEGER NOT NULL, created_at BIGINT NOT NULL, created_by TEXT)`,
+  // who changed what
+  `CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, at BIGINT NOT NULL, user_id TEXT, user_name TEXT, col TEXT NOT NULL, rec_id TEXT, action TEXT NOT NULL, label TEXT)`,
+  `CREATE INDEX IF NOT EXISTS audit_at ON audit (at)`,
 ];
 
 /**

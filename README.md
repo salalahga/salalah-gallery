@@ -8,19 +8,22 @@ An all-in-one app for a carpentry / CNC workshop: jobs, staff, payroll, quotatio
 |---|---|---|
 | Workshop | **Dashboard** | Income/expense, dues, active jobs, staff tasks, low stock, 6-month cash-flow chart |
 | | **Jobs** | Kanban + list of work orders per work type (CNC, Carpentry, Board, Polish, Installation, or your own). Each type has its own detail fields. Assign team, track progress, record materials, issue from stock, create invoice, WhatsApp update to customer |
-| | **Tasks** | Assign tasks to staff, drag across To do → Done, send the task to staff on WhatsApp |
+| | **Tasks** | Assign tasks to staff, drag across To do → Done, send the task to staff on WhatsApp. *Hours actually worked* are costed to the project at the person's hourly cost |
+| | **Service & warranty** | After-sales complaints and repair visits: assign a technician, schedule the visit, WhatsApp technician and customer, warranty detected from the project (warranty months run from completion), bill chargeable visits |
 | | **Inventory** | Boards/sheets/hardware and products for sale, reorder alerts, purchases post to accounts |
-| Team | **Staff** | Profiles, roles, skills, monthly/daily/hourly pay |
+| Team | **Staff** | Profiles, roles, skills, monthly/daily/hourly pay, end-of-service gratuity and annual-leave balance |
 | | **Attendance** | Monthly grid (P/A/H/L) + overtime hours |
 | | **Payroll** | Auto-calculated from attendance, overtime, allowance, bonus, deductions and advances. Payslip print; paying posts to accounts |
-| Business | **Customers** | Contacts with billed/balance totals, call/WhatsApp/email |
-| | **Quotations** | Line items with work-type rates, VAT, discount, terms → print/PDF, WhatsApp, convert to job or invoice |
-| | **Invoices** | Partial payments, overdue tracking, print/PDF, WhatsApp reminders |
-| | **Sales** | Point-of-sale for products, reduces stock, prints receipt, posts income |
-| Money | **Accounts** | Income/expense ledger, P&L by category, 12-month trend, CSV export |
+| Business | **Customers** | Contacts with billed/balance totals, call/WhatsApp/email, **statement of account** (print / WhatsApp) |
+| | **Quotations** | Line items with work-type rates, VAT, discount, terms → print/PDF, WhatsApp, convert to job or invoice (once only), **revisions** (-R1, -R2…), past-validity quotes show as **Expired** |
+| | **Invoices** | Partial payments through receipts, overdue tracking, print/PDF, WhatsApp reminders, **credit notes** (with automatic refund of any overpaid part) |
+| | **Receipts & Delivery** | Receipts (void with reason), **cheques / PDC** follow-up (deposited → cleared / bounced), credit notes, delivery notes |
+| | **Sales** | Point-of-sale for products (never more than in stock), prints receipt, posts income, **returns & refunds** put stock back |
+| Money | **Accounts** | Income/expense ledger, **cash in hand & bank balance**, cash↔bank transfers, **recurring expenses** (rent, electricity… posted monthly), P&L by category, 12-month trend, CSV export |
+| | **Reports** | **VAT return** (output vs input VAT by period), customer balances with aging (not due / 30 / 60 / 90+), supplier balances, staff gratuity & leave |
 | Growth | **Social Media** | Accounts, content calendar, caption generator from jobs, hashtags, one-click share |
 | | **Website** | Auto-built business website (services, gallery, shop, contact, WhatsApp button), 4 themes, live preview, download `index.html` |
-| System | **Settings** | Business profile & logo, currency, VAT, work types & their fields, categories, payroll rules, integrations, backup/restore |
+| System | **Settings** | Business profile & logo, currency, VAT, opening cash/bank balances, work types & their fields, categories, payroll, gratuity & leave rules, backup/restore, **automatic daily backup** (kept on the server, optionally sent to Telegram / email), **activity log** (who changed what) |
 
 ## Workshop extras
 
@@ -59,10 +62,24 @@ Secrets such as bot tokens, SMTP passwords and webhook keys are stored **only on
 
 **Automations** (owner only) runs rules on the server around the clock: *when X happens → Telegram / email / webhook / create a task*.
 
-- **Triggers:** new job, job status changed or completed, task assigned or completed, quotation created or accepted, invoice created, payment received, sale, expense, low stock, new customer. Daily triggers: morning summary, overdue invoices, tasks due today, jobs due within 2 days. The time zone and the summary hour are set in Settings.
+- **Triggers:** new job, job status changed or completed, task assigned or completed, quotation created or accepted, invoice created, payment received, sale, expense, low stock, new customer, new service call. Daily triggers: morning summary, overdue invoices, tasks due today, jobs due within 2 days, cheques due today. The daily run also posts due recurring expenses and makes the automatic backup. The time zone and the summary hour are set in Settings.
 - **Ready-made rules** are included and switched **off** until you enable them. Messages use `{{placeholders}}`, and every rule can be tested with sample data (▶).
 - An **activity log** shows what ran and why anything failed.
 - To add a trigger, fire it from `onChange` or `daily` in `server/automations.js` and add its label to `TRIGGERS`.
+
+## Money stays consistent
+
+Every money correction goes through `src/core/ledger.ts`, so Accounts, invoices, receipts and stock never disagree:
+
+- An invoice's paid amount changes only through receipts (Record payment), advances or credit notes — it cannot be typed.
+- **Create invoice** on a project bills what is not invoiced yet: the rest of the contract after advance/stage invoices, plus additional work. A quotation is invoiced once.
+- **Void a receipt** instead of deleting it: its income leaves Accounts and the invoice owes again; a voided advance is taken back off the invoices it was credited to.
+- An invoice with payments cannot be deleted; deleting an invoice gives back the advances and additional work it used.
+- A bounced cheque voids its receipt (or reverses the supplier payment).
+- Accounts refuses to delete entries that belong to a receipt, sale, advance or tracked cheque and says where to correct them.
+- Customers, suppliers and staff with history cannot be deleted (staff can be set to Inactive); projects with money are cancelled, not deleted.
+
+Photos are stored on the server (`/api/files/…`) instead of inside records, so syncing stays fast; older inline photos are moved automatically when the server starts.
 
 ## Logins & online database
 
@@ -72,7 +89,7 @@ The app has a small Node.js server (`server/`) that provides logins and an onlin
 |---|---|
 | **Owner** | Everything, including payroll, settings, website and user logins |
 | **Manager** | Jobs, tasks, stock, staff, attendance, customers, quotations, invoices, sales, accounts, social. No payroll, settings or logins |
-| **Staff** | Jobs (without prices), their own tasks (can update status), stock (without cost). No salaries, accounts or customer contacts |
+| **Staff** | Jobs (without prices), their own tasks (status and hours worked), service visits assigned to them, their own site measurements, stock (without cost). No salaries, accounts or customer contacts |
 
 The server enforces these rules: hidden fields are never sent to a lower role, and a forbidden change is rejected even if someone calls the API directly.
 
@@ -122,9 +139,11 @@ New kinds of work (e.g. *Aluminium*, *Upholstery*) need **no code** — add them
 
 ```
 server/        Node server: API, logins, role permissions, PostgreSQL / PGlite storage,
-               plugins (Telegram/email/webhooks), automations engine, iCal feed
+               plugins (Telegram/email/webhooks), automations engine, iCal feed,
+               photo storage (files.js), daily backup (backup.js), activity log
 src/plugins/   plugin catalog, plugin hooks (QR, templates, calendar, CSV), PWA
-src/core/      types, store (sync + offline outbox), session, api, calculations, i18n, router, website generator
+src/core/      types, store (sync + offline outbox), session, api, calculations, ledger (money corrections),
+               recurring expenses, i18n, router, website generator
 src/components ui kit, document (quotation/invoice) editor & print layout
 src/modules/   one file per module + registry.tsx
 ```

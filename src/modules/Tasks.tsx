@@ -22,7 +22,7 @@ export default function Tasks() {
   useEffect(() => { if (params.new) { setEdit({ status: 'todo', priority: 'normal', jobId: params.job, dueDate: today() }); go('tasks'); } }, [params.new]); // eslint-disable-line
 
   const list = db.tasks.filter((x) => who === 'all' || x.staffId === who || (who === 'none' && !x.staffId));
-  const save = () => { if (!edit?.title?.trim()) return toast('Enter a task title'); if (isStaff && edit.staffId !== me) return toast('You can only add tasks for yourself'); store.upsert('tasks', edit as Task); setEdit(null); toast('Task saved'); };
+  const save = () => { if (!edit?.title?.trim()) return toast('Enter a task title'); if (Number(edit.spent) < 0) return toast('Hours cannot be negative'); if (isStaff && edit.staffId !== me) return toast('You can only add tasks for yourself'); store.upsert('tasks', edit as Task); setEdit(null); toast('Task saved'); };
   const staff = L.staff(edit?.staffId);
   const job = L.job(edit?.jobId);
 
@@ -45,7 +45,7 @@ export default function Tasks() {
               <div key={x.id} className="kcard" draggable={!isStaff || x.staffId === me} onDragStart={() => setDrag(x.id)} onClick={() => setEdit({ ...x })}>
                 <div className="flex between"><span className="muted">{j ? j.code : 'General'}</span><Badge tone={priorityTone[x.priority]}>{x.priority}</Badge></div>
                 <div className="ktitle" style={x.status === 'done' ? { textDecoration: 'line-through', opacity: .6 } : undefined}>{x.title}</div>
-                <div className="kmeta"><span className="flex">{p ? <Avatar name={p.name} color={p.color} size={22} /> : null}{p?.name || 'Unassigned'}</span>{x.status !== 'done' && <Badge tone={d.tone}>{d.text}</Badge>}</div>
+                <div className="kmeta"><span className="flex">{p ? <Avatar name={p.name} color={p.color} size={22} /> : null}{p?.name || 'Unassigned'}{Number(x.spent) > 0 && <span className="muted">· {x.spent}h</span>}</span>{x.status !== 'done' && <Badge tone={d.tone}>{d.text}</Badge>}</div>
               </div>); })}
           </div>); })}
       </div>
@@ -65,6 +65,7 @@ export default function Tasks() {
             <Field label="Priority"><select value={edit.priority} onChange={(e) => setEdit({ ...edit, priority: e.target.value as Task['priority'] })}>{['low', 'normal', 'high', 'urgent'].map((x) => <option key={x}>{x}</option>)}</select></Field>
             <Field label="Due date"><input type="date" value={edit.dueDate || ''} onChange={(e) => setEdit({ ...edit, dueDate: e.target.value })} /></Field>
             <Field label="Estimated hours"><input type="number" value={edit.hours || ''} onChange={(e) => setEdit({ ...edit, hours: +e.target.value })} /></Field>
+            <Field label="Hours actually worked"><input type="number" min={0} step={0.5} value={edit.spent || ''} onChange={(e) => setEdit({ ...edit, spent: +e.target.value })} placeholder="costed to the project" /></Field>
             <Field label="Instructions" span={3}><textarea value={edit.notes || ''} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
           </div>
         </Modal>

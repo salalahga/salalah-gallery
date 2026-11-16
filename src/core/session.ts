@@ -70,5 +70,5 @@ export function useUser(): User | null { const s = useSession(); return s.status
 /** Mirrors server/permissions.js so the UI hides actions a role cannot perform. */
 export function useCanWrite() {
   const role = useRole();
-  return (col: string) => role === 'admin' || (role === 'manager' && !['payslips', 'advances'].includes(col)) || (role === 'staff' && (col === 'tasks' || col === 'measurements'));
+  return (col: string) => role === 'admin' || (role === 'manager' && !['payslips', 'advances'].includes(col)) || (role === 'staff' && (col === 'tasks' || col === 'measurements' || col === 'services'));
 }

@@ -9,15 +9,23 @@ import { projectFinance } from '../core/calc';
 import { Wallet, ClipboardList } from 'lucide-react';
 import { useRoute, go } from '../core/router';
 import type { Job, JobStatus } from '../core/types';
-import { money, fmtDate } from '../core/calc';
+import { money, fmtDate, docTotals } from '../core/calc';
 import { statusMeta, lookup, dueLabel, priorityTone, waLink } from '../core/helpers';
 import { Modal, Field, Badge, PageHeader, SearchBox, Tabs, Avatar, Progress, Empty, toast, confirmDelete } from '../components/ui';
 
 import { useCanWrite } from '../core/session';
 import { usePlugin, useWaText, gcalLink, mapsLink, QR } from '../plugins/hooks';
-import { CalendarPlus, MapPin, Star, Printer, Truck, HandCoins } from 'lucide-react';
+import { CalendarPlus, MapPin, Star, Printer, Truck, HandCoins, Wrench } from 'lucide-react';
 
 const STATUSES: JobStatus[] = ['enquiry', 'design', 'production', 'finishing', 'installation', 'completed'];
+
+/** Last day of a completed project's warranty (undefined when there is none). */
+export function warrantyEnd(j: Pick<Job, 'completedDate' | 'warrantyMonths'>) {
+  if (!j.completedDate || !j.warrantyMonths) return undefined;
+  const [y, m, day] = j.completedDate.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + Number(j.warrantyMonths), day));
+  return d.toISOString().slice(0, 10);
+}
 
 export function blankJob(code: string, workTypeId?: string): Partial<Job> {
   return { code, title: '', status: 'enquiry', priority: 'normal', value: 0, staffIds: [], details: {}, materials: [], progress: 0, startDate: today(), workTypeId };
@@ -44,11 +52,16 @@ export default function Jobs() {
 
   const save = () => {
     if (!edit?.title?.trim()) return toast('Please enter a job title');
-    const { _tab, ...rec } = edit as Job & { _tab?: string }; void _tab; store.upsert('jobs', rec as Job); toast('Project saved'); setEdit(null);
+    if (db.jobs.some((j) => j.id !== edit.id && j.code === edit.code)) return toast(`Job code ${edit.code} is already used`);
+    const { _tab, ...rec } = edit as Job & { _tab?: string }; void _tab;
+    // the warranty runs from the day the project is completed
+    if (rec.status === 'completed' && !rec.completedDate) rec.completedDate = today();
+    if (rec.status !== 'completed') rec.completedDate = undefined;
+    store.upsert('jobs', rec as Job); toast('Project saved'); setEdit(null);
   };
   const moveTo = (id: string, status: JobStatus) => {
     const j = db.jobs.find((x) => x.id === id); if (!j || j.status === status) return;
-    store.upsert('jobs', { ...j, status, progress: status === 'completed' ? 100 : j.progress }); toast(`Moved to ${statusMeta[status].label}`);
+    store.upsert('jobs', { ...j, status, progress: status === 'completed' ? 100 : j.progress, completedDate: status === 'completed' ? j.completedDate || today() : undefined }); toast(`Moved to ${statusMeta[status].label}`);
   };
 
   return (
@@ -123,27 +136,38 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
     toast(`Stock reduced · ${money(cost, s)} added to project expenses`);
   };
   const makeInvoice = () => {
-    const first = !db.invoices.some((i) => i.jobId === job.id);
+    // Bills what is not invoiced yet: the rest of the contract (after advance / stage invoices,
+    // also those made from the quotation) plus any additional work. Amounts are VAT-inclusive.
+    const prior = db.invoices.filter((i) => i.jobId === job.id || (job.quotationId && i.quotationId === job.quotationId));
+    const billed = prior.reduce((n, i) => n + docTotals(i).total, 0);
     const extras = (job.extras || []).filter((e) => !e.invoiced);
+    const billedExtras = (job.extras || []).filter((e) => e.invoiced).reduce((n, e) => n + e.amount, 0);
+    const baseLeft = +((Number(job.value) || 0) - (billed - billedExtras)).toFixed(3);
+    const k = 1 + (Number(s.vatRate) || 0) / 100; const net = (x: number) => +(x / k).toFixed(3);
     const items = [
-      ...(first ? [{ id: uid(), description: job.title || 'Project', workTypeId: job.workTypeId, qty: 1, unit: 'lot', rate: job.value || 0 }] : []),
-      ...extras.map((e) => ({ id: uid(), description: `Additional work: ${e.description}`, qty: 1, unit: 'lot', rate: e.amount })),
+      ...(baseLeft > 0.0005 ? [{ id: uid(), description: prior.length ? `${job.title || 'Project'} — balance of contract` : job.title || 'Project', workTypeId: job.workTypeId, qty: 1, unit: 'lot', rate: net(baseLeft) }] : []),
+      ...extras.map((e) => ({ id: uid(), description: `Additional work: ${e.description}`, qty: 1, unit: 'lot', rate: net(e.amount) })),
     ];
+    if (!(Number(job.value) > 0) && !extras.length) return toast('Set the project value first');
     if (!items.length) return toast('Everything on this project is already invoiced');
-    const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), customerId: job.customerId, title: first ? job.title || '' : `${job.title} — additional work`, jobId: job.id, discount: 0, vat: s.vatRate, paid: 0, items });
+    const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), dueDate: new Date(Date.now() + 15 * 864e5).toISOString().slice(0, 10), customerId: job.customerId, title: prior.length ? `${job.title} — ${baseLeft > 0.0005 ? 'balance' : 'additional work'}` : job.title || '', jobId: job.id, quotationId: prior.length ? undefined : job.quotationId, discount: 0, vat: s.vatRate, paid: 0, items, extraIds: extras.map((e) => e.id) });
     if (extras.length) store.upsert('jobs', { ...job, extras: (job.extras || []).map((e) => (extras.includes(e) ? { ...e, invoiced: true } : e)) } as Job);
     const adv = takeAdvances(inv.id, job.id, job.quotationId);
-    if (adv) { store.upsert('invoices', { ...inv, paid: adv }); toast(`Advance ${money(adv, s)} already received — shown as paid`); }
+    if (adv) toast(`Advance ${money(adv, s)} already received — shown as paid`);
     go('invoices', { id: inv.id });
   };
 
   return (
     <Modal open wide title={exists ? `${job.code} · ${job.title || 'Project'}` : 'New project'} onClose={onClose}
       footer={readOnly ? <button className="btn" onClick={onClose}>Close</button> : <>
-        {exists && <button className="btn danger ghost" onClick={() => { if (confirmDelete('this job')) { store.remove('jobs', job.id!); onClose(); } }}><Trash2 size={15} />Delete</button>}
+        {exists && <button className="btn danger ghost" onClick={() => {
+          const links = [db.invoices.some((i) => i.jobId === job.id) && 'invoices', db.txns.some((t) => t.jobId === job.id) && 'income/expenses', db.receipts.some((r) => r.jobId === job.id && !r.voided) && 'receipts'].filter(Boolean);
+          if (links.length) return toast(`This project has ${links.join(', ')}. Set its status to Cancelled instead of deleting it.`);
+          if (confirmDelete('this job')) { store.remove('jobs', job.id!); onClose(); } }}><Trash2 size={15} />Delete</button>}
         {exists && <button className="btn ghost" onClick={makeInvoice}><Receipt size={15} />Create invoice</button>}
         {exists && <button className="btn ghost" onClick={() => go('documents', { receipt: 'new', job: job.id! })}><HandCoins size={15} />Advance receipt</button>}
         {exists && <button className="btn ghost" onClick={() => go('documents', { delivery: 'new', job: job.id! })}><Truck size={15} />Delivery note</button>}
+        {exists && job.status === 'completed' && <button className="btn ghost" onClick={() => go('services', { new: '1', job: job.id! })}><Wrench size={15} />Service call</button>}
         {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('jobUpdate', { customer: cust.name, code: job.code, title: job.title, status: statusMeta[job.status!].label, business: s.businessName }))}><MessageCircle size={15} />WhatsApp update</a>}
         <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={onSave}>Save project</button>
       </>}>
@@ -173,7 +197,7 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
         <Field label={`Progress — ${job.progress || 0}%`}><input type="range" min={0} max={100} step={5} value={job.progress || 0} onChange={(e) => set({ progress: +e.target.value })} style={{ padding: 0 }} /></Field>
         <Field label="Start date"><input type="date" value={job.startDate || ''} onChange={(e) => set({ startDate: e.target.value })} /></Field>
         <Field label="Due date"><input type="date" value={job.dueDate || ''} onChange={(e) => set({ dueDate: e.target.value })} /></Field>
-        <div />
+        <Field label={`Warranty (months)${job.completedDate && job.warrantyMonths ? ` — until ${fmtDate(warrantyEnd(job as Job))}` : ''}`}><input type="number" min={0} value={job.warrantyMonths ?? ''} placeholder="e.g. 12" onChange={(e) => set({ warrantyMonths: e.target.value === '' ? undefined : +e.target.value })} /></Field>
         {wt && wt.fields.length > 0 && <>
           <div className="section-title">{wt.name} details</div>
           {wt.fields.map((f) => <Field key={f} label={f}><input value={job.details?.[f] || ''} onChange={(e) => set({ details: { ...job.details, [f]: e.target.value } })} /></Field>)}

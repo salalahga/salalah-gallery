@@ -41,9 +41,9 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
   return (
     <div className="project-money">
       <div className="grid g4 mb">
-        <Stat label="Project value" value={money(f.contract, s)} icon={<Wallet size={20} />} tone="wood" sub={f.extras ? `${money(f.base, s)} + ${money(f.extras, s)} additional` : 'contract amount'} />
+        <Stat label="Project value" value={money(f.contract, s)} icon={<Wallet size={20} />} tone="wood" sub={[f.extras ? `${money(f.base, s)} + ${money(f.extras, s)} additional` : 'contract amount', f.credited ? `− ${money(f.credited, s)} credit notes` : ''].filter(Boolean).join(' ')} />
         <Stat label="Collected" value={money(f.collected, s)} icon={<TrendingUp size={20} />} tone="green" sub={`To collect: ${money(f.toCollect, s)}`} />
-        <Stat label="Expenses" value={money(f.expenses, s)} icon={<TrendingDown size={20} />} tone="red" sub={f.materials ? `incl. ${money(f.materials, s)} stock materials` : `${expenses.length} entries`} />
+        <Stat label="Expenses" value={money(f.expenses, s)} icon={<TrendingDown size={20} />} tone="red" sub={[f.materials && `${money(f.materials, s)} stock`, f.labour && `${money(f.labour, s)} staff time`].filter(Boolean).join(' · ') || `${expenses.length} entries`} />
         <Stat label="Profit" value={<span className={f.profit >= 0 ? 'pos' : 'neg'}>{money(f.profit, s)}</span>} icon={<Scale size={20} />} tone="blue" sub={f.contract ? `${Math.round(f.margin * 100)}% margin · cash in hand ${money(f.cash, s)}` : '—'} />
       </div>
       <div className="flex between wrap" style={{ marginBottom: 6 }}><span className="muted">Collected {Math.round(pct)}% of project value</span>
@@ -82,11 +82,12 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
           <select value={exp.method} onChange={(e) => setExp({ ...exp, method: e.target.value })}>{['Cash', 'Bank', 'Card', 'Cheque'].map((m) => <option key={m}>{m}</option>)}</select>
           <button type="button" className="btn sm primary" onClick={addExpense}><Plus size={14} />Add expense</button>
         </div>
-        {(expenses.length > 0 || f.materials > 0) ? <div className="table-wrap" style={{ margin: '10px 0 0' }}><table>
+        {(expenses.length > 0 || f.materials > 0 || f.labour > 0) ? <div className="table-wrap" style={{ margin: '10px 0 0' }}><table>
           <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid by</th><th className="num">Amount</th><th /></tr></thead>
           <tbody>
             {expenses.map((t) => <tr key={t.id}><td>{fmtDate(t.date)}</td><td><Badge>{t.category}</Badge></td><td>{t.description}</td><td>{t.method}</td><td className="num neg">{money(t.amount, s)}</td>
               <td><button type="button" className="icon-btn" onClick={() => confirmDelete('this expense') && store.remove('txns', t.id)}><Trash2 size={14} /></button></td></tr>)}
+            {f.labour > 0 && <tr><td>—</td><td><Badge>Staff time</Badge></td><td>{f.labourHours} h logged on tasks ({db.tasks.filter((t) => t.jobId === job.id && Number(t.spent) > 0).map((t) => `${db.staff.find((x) => x.id === t.staffId)?.name || '?'} ${t.spent}h`).join(', ')})</td><td>Payroll</td><td className="num neg">{money(f.labour, s)}</td><td /></tr>}
             {f.materials > 0 && <tr><td>—</td><td><Badge>Materials from stock</Badge></td><td>{job.materials.filter((m) => m.issued).map((m) => `${m.issued} × ${db.items.find((i) => i.id === m.itemId)?.name || 'item'}`).join(', ')}</td><td>Stock</td><td className="num neg">{money(f.materials, s)}</td><td /></tr>}
           </tbody></table></div> : <p className="muted">No expenses yet. Every expense you add here also appears in Accounts.</p>}
         {Object.keys(f.byCategory).length > 1 && <div className="chips" style={{ marginTop: 10 }}>{Object.entries(f.byCategory).sort((a, b) => b[1] - a[1]).map(([c, v]) => <Badge key={c}>{c}: {money(v, s)}</Badge>)}</div>}

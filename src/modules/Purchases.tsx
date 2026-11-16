@@ -18,7 +18,7 @@ export default function Purchases() {
   const [po, setPo] = useState<Partial<Purchase> | null>(null);
   const [sup, setSup] = useState<Partial<Supplier> | null>(null);
   const [view, setView] = useState<Purchase | null>(null);
-  const [pay, setPay] = useState<{ p: Purchase; amount: number; method: string } | null>(null);
+  const [pay, setPay] = useState<{ p: Purchase; amount: number; method: string; chequeNo?: string; chequeDate?: string; bank?: string } | null>(null);
   const supplier = (id?: string) => db.suppliers.find((x) => x.id === id);
 
   const blank = (): Partial<Purchase> => ({ number: nextNumber('PO', db.purchases.map((x) => x.number)), date: today(), status: 'ordered', vat: s.vatRate, paid: 0, lines: [{ id: uid(), description: '', qty: 1, unit: 'sheet', rate: 0 }] });
@@ -31,9 +31,12 @@ export default function Purchases() {
   };
   const recordPay = () => {
     if (!pay || pay.amount <= 0) return;
+    if (pay.amount > poDue(pay.p) + 0.0005) return toast(`More than what is due (${money(poDue(pay.p), s)})`);
+    if (pay.method === 'Cheque' && !pay.chequeNo?.trim()) return toast('Enter the cheque number');
     store.upsert('purchases', { ...pay.p, paid: (Number(pay.p.paid) || 0) + pay.amount });
     const cat = pay.p.lines.some((l) => /board|sheet|mdf|ply|acp|acrylic/i.test(l.description + (L.item(l.itemId)?.category || ''))) ? 'Boards & Sheets' : 'Materials';
-    store.upsert('txns', { date: today(), kind: 'expense', category: cat, amount: pay.amount, method: pay.method, description: `${pay.p.number} — ${supplier(pay.p.supplierId)?.name || 'Supplier'}`, ref: pay.p.billNo || pay.p.number, jobId: pay.p.jobId });
+    const t = store.upsert('txns', { date: today(), kind: 'expense', category: cat, amount: pay.amount, method: pay.method, description: `${pay.p.number} — ${supplier(pay.p.supplierId)?.name || 'Supplier'}`, ref: pay.p.billNo || pay.p.number, jobId: pay.p.jobId });
+    if (pay.method === 'Cheque') store.upsert('cheques', { direction: 'issued', chequeNo: pay.chequeNo!, bank: pay.bank, date: pay.chequeDate || today(), amount: pay.amount, party: supplier(pay.p.supplierId)?.name || 'Supplier', status: 'pending', purchaseId: pay.p.id, txnId: t.id, note: pay.p.number });
     setPay(null); toast('Supplier payment recorded in Accounts');
   };
   const setLine = (i: number, p: Partial<PurchaseLine>) => po && setPo({ ...po, lines: po.lines!.map((l, k) => (k === i ? { ...l, ...p } : l)) });
@@ -76,7 +79,10 @@ export default function Purchases() {
       </div>}
 
       {po && <Modal open wide title={db.purchases.some((p) => p.id === po.id) ? `Purchase order ${po.number}` : 'New purchase order'} onClose={() => setPo(null)} footer={<>
-        {po.id && <button className="btn danger ghost" onClick={() => { if (confirmDelete(po.number)) { store.remove('purchases', po.id!); setPo(null); } }}><Trash2 size={15} />Delete</button>}
+        {po.id && <button className="btn danger ghost" onClick={() => {
+          const cur = db.purchases.find((x) => x.id === po.id);
+          if (cur && (Number(cur.paid) > 0 || cur.status === 'received')) return toast('This order was received or paid. Set its status to Cancelled instead of deleting it.');
+          if (confirmDelete(po.number)) { store.remove('purchases', po.id!); setPo(null); } }}><Trash2 size={15} />Delete</button>}
         <span className="spacer" /><button className="btn" onClick={() => setPo(null)}>Cancel</button><button className="btn" onClick={() => { const v = savePo(); if (v) setView(v); }}><Printer size={15} />Save & print</button><button className="btn primary" onClick={savePo}>Save</button></>}>
         <div className="form">
           <Field label="Supplier"><select value={po.supplierId || ''} onChange={(e) => setPo({ ...po, supplierId: e.target.value })}><option value="">— Select —</option>{db.suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
@@ -105,7 +111,10 @@ export default function Purchases() {
       </Modal>}
 
       {sup && <Modal open title={sup.id ? 'Edit supplier' : 'New supplier'} onClose={() => setSup(null)} footer={<>
-        {sup.id && <button className="btn danger ghost" onClick={() => { if (confirmDelete(sup.name)) { store.remove('suppliers', sup.id!); setSup(null); } }}><Trash2 size={15} />Delete</button>}
+        {sup.id && <button className="btn danger ghost" onClick={() => {
+          const n = db.purchases.filter((x) => x.supplierId === sup.id).length;
+          if (n) return toast(`${sup.name} has ${n} purchase order${n > 1 ? 's' : ''} and cannot be deleted.`);
+          if (confirmDelete(sup.name)) { store.remove('suppliers', sup.id!); setSup(null); } }}><Trash2 size={15} />Delete</button>}
         <span className="spacer" /><button className="btn" onClick={() => setSup(null)}>Cancel</button><button className="btn primary" onClick={() => { if (!sup.name) return toast('Enter a name'); store.upsert('suppliers', sup as Supplier); setSup(null); toast('Supplier saved'); }}>Save</button></>}>
         <div className="form two">
           <Field label="Name" span={3}><input autoFocus value={sup.name || ''} onChange={(e) => setSup({ ...sup, name: e.target.value })} /></Field>
@@ -122,6 +131,9 @@ export default function Purchases() {
         <div className="form two">
           <Field label={`Amount (${s.currency})`}><input type="number" autoFocus value={pay.amount} onChange={(e) => setPay({ ...pay, amount: +e.target.value })} /></Field>
           <Field label="Method"><select value={pay.method} onChange={(e) => setPay({ ...pay, method: e.target.value })}>{['Cash', 'Cheque', 'Bank transfer', 'Card'].map((m) => <option key={m}>{m}</option>)}</select></Field>
+          {pay.method === 'Cheque' && <Field label="Cheque number"><input value={pay.chequeNo || ''} onChange={(e) => setPay({ ...pay, chequeNo: e.target.value })} /></Field>}
+          {pay.method === 'Cheque' && <Field label="Cheque date (PDC)"><input type="date" value={pay.chequeDate || today()} onChange={(e) => setPay({ ...pay, chequeDate: e.target.value })} /></Field>}
+          {pay.method === 'Cheque' && <Field label="Bank"><input value={pay.bank || ''} onChange={(e) => setPay({ ...pay, bank: e.target.value })} /></Field>}
         </div>
       </Modal>}
 

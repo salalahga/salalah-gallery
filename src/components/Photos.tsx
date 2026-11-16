@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { Camera, Trash2, Share2, Globe, Loader2 } from 'lucide-react';
 import type { Photo } from '../core/types';
 import { uid } from '../core/store';
+import { storePhoto } from '../core/upload';
 import { toast } from './ui';
 
 /** Resize a picked/camera image to max `max` px and JPEG-compress it, so photos stay small in the database. */
@@ -34,7 +35,7 @@ export function Photos({ photos, onChange, readOnly, onShare, onWebsite, kinds =
     setBusy(true);
     try {
       const next = [...photos];
-      for (const f of Array.from(files).slice(0, 10)) next.push({ id: uid(), url: await compressImage(f), kind, at: new Date().toISOString() });
+      for (const f of Array.from(files).slice(0, 10)) next.push({ id: uid(), url: await storePhoto(await compressImage(f)), kind, at: new Date().toISOString() });
       if (next.length > 30) toast('Keep it to about 30 photos per record');
       onChange(next.slice(0, 30));
     } catch (e) { toast((e as Error).message); } finally { setBusy(false); if (ref.current) ref.current.value = ''; }

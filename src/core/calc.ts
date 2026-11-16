@@ -1,4 +1,4 @@
-import type { DB, Invoice, Job, LineItem, Quotation, Settings } from './types';
+import type { DB, Invoice, Job, LineItem, Quotation, Sale, Settings, Staff, Txn, MoneyAccount } from './types';
 
 export const lineTotal = (l: LineItem) => (Number(l.qty) || 0) * (Number(l.rate) || 0);
 export function docTotals(d: Pick<Quotation | Invoice, 'items' | 'discount' | 'vat'>) {
@@ -8,11 +8,76 @@ export function docTotals(d: Pick<Quotation | Invoice, 'items' | 'discount' | 'v
   const vat = taxable * ((Number(d.vat) || 0) / 100);
   return { subtotal, discount, taxable, vat, total: taxable + vat };
 }
-export const invoiceBalance = (inv: Invoice) => docTotals(inv).total - (Number(inv.paid) || 0);
+/** What the customer still owes: total − paid − credit notes. */
+export const invoiceBalance = (inv: Invoice) => docTotals(inv).total - (Number(inv.paid) || 0) - (Number(inv.credited) || 0);
 export const invoiceStatus = (inv: Invoice) => {
-  const t = docTotals(inv).total; const p = Number(inv.paid) || 0;
-  return p <= 0 ? 'unpaid' : p >= t - 0.001 ? 'paid' : 'partial';
+  const t = docTotals(inv).total - (Number(inv.credited) || 0); const p = Number(inv.paid) || 0;
+  return p >= t - 0.001 && (p > 0 || t <= 0.001) ? 'paid' : p <= 0 ? 'unpaid' : 'partial';
 };
+/** Draft/sent quotations past their validity date show as expired. */
+export const quoteState = (q: Quotation, today = new Date().toISOString().slice(0, 10)) =>
+  (q.status === 'draft' || q.status === 'sent') && q.validUntil && q.validUntil < today ? 'expired' : q.status;
+
+/** POS sale totals; returns refund part of the bill. */
+export function saleTotals(x: Sale) {
+  const sub = x.lines.reduce((n, l) => n + l.qty * l.price, 0);
+  const total = Math.max(0, sub - (Number(x.discount) || 0)) * (1 + (Number(x.vat) || 0) / 100);
+  const returned = (x.returns || []).reduce((n, r) => n + r.amount, 0);
+  return { sub, total, returned, net: total - returned };
+}
+/** Refund for returning `qty` of each line: the line's share of the bill after discount, with VAT. */
+export function returnAmount(x: Sale, lines: { itemId: string; qty: number }[]) {
+  const sub = x.lines.reduce((n, l) => n + l.qty * l.price, 0); if (!sub) return 0;
+  const k = Math.max(0, sub - (Number(x.discount) || 0)) / sub * (1 + (Number(x.vat) || 0) / 100);
+  return lines.reduce((n, r) => n + (x.lines.find((l) => l.itemId === r.itemId)?.price || 0) * r.qty * k, 0);
+}
+
+// ---------- cash & bank ----------
+export const accountOf = (t: Pick<Txn, 'account' | 'method'>): MoneyAccount => t.account || (t.method === 'Cash' ? 'cash' : 'bank');
+export function balances(db: DB) {
+  const s = db.settings; const from = s.openingDate || '';
+  const b = { cash: Number(s.openingCash) || 0, bank: Number(s.openingBank) || 0 };
+  for (const t of db.txns) {
+    if (from && t.date < from) continue;
+    if (t.kind === 'transfer') { b[t.account || 'cash'] -= t.amount; b[t.toAccount || 'bank'] += t.amount; continue; }
+    b[accountOf(t)] += t.kind === 'income' ? t.amount : -t.amount;
+  }
+  const pendingIn = db.cheques.filter((c) => c.direction === 'received' && ['pending', 'deposited'].includes(c.status)).reduce((n, c) => n + c.amount, 0);
+  const pendingOut = db.cheques.filter((c) => c.direction === 'issued' && ['pending', 'deposited'].includes(c.status)).reduce((n, c) => n + c.amount, 0);
+  return { ...b, total: b.cash + b.bank, pendingIn, pendingOut };
+}
+
+// ---------- staff cost, gratuity & leave ----------
+/** What one hour of this person's time costs the business (salary + allowance). */
+export function hourlyCost(st: Pick<Staff, 'salaryType' | 'rate' | 'allowance'> | undefined, s: Settings) {
+  if (!st || !(Number(st.rate) >= 0)) return 0;
+  const h = Number(s.workHoursPerDay) || 8; const days = Number(s.workingDaysPerMonth) || 26;
+  if (st.salaryType === 'hourly') return Number(st.rate) || 0;
+  if (st.salaryType === 'daily') return (Number(st.rate) || 0) / h;
+  return ((Number(st.rate) || 0) + (Number(st.allowance) || 0)) / days / h;
+}
+export function monthlyBasic(st: Staff, s: Settings) {
+  const days = Number(s.workingDaysPerMonth) || 26; const h = Number(s.workHoursPerDay) || 8;
+  return st.salaryType === 'monthly' ? Number(st.rate) || 0 : st.salaryType === 'daily' ? (Number(st.rate) || 0) * days : (Number(st.rate) || 0) * h * days;
+}
+export function serviceYears(joinDate?: string, asOf = new Date().toISOString().slice(0, 10)) {
+  if (!joinDate) return 0;
+  return Math.max(0, (new Date(asOf + 'T00:00:00').getTime() - new Date(joinDate + 'T00:00:00').getTime()) / (365.25 * 864e5));
+}
+/**
+ * End-of-service gratuity and annual leave balance. Omani nationals are covered by social insurance
+ * instead of gratuity. Days per year are set in Settings → Lists & payroll.
+ */
+export function staffEntitlements(db: DB, st: Staff) {
+  const s = db.settings; const years = serviceYears(st.joinDate);
+  const basic = monthlyBasic(st, s);
+  const omani = /oman/i.test(st.nationality || '');
+  const gratuity = omani ? 0 : (basic / 30) * (Number(s.gratuityDaysPerYear ?? 30)) * years;
+  const from = st.leaveFrom || st.joinDate;
+  const leaveAccrued = (Number(s.annualLeaveDays ?? 30)) * serviceYears(from) + (Number(st.leaveOpening) || 0);
+  const leaveTaken = db.attendance.filter((a) => a.staffId === st.id && a.mark === 'L' && (!from || a.date >= from)).length;
+  return { years, basic, gratuity, omani, leaveAccrued, leaveTaken, leaveBalance: leaveAccrued - leaveTaken };
+}
 
 export function money(n: number, s: Settings | string) {
   const cur = typeof s === 'string' ? s : s.currency;
@@ -32,6 +97,7 @@ export function daysInMonth(m: string) { const [y, mo] = m.split('-').map(Number
 export function finance(db: DB, month?: string) {
   const inMonth = (d: string) => !month || d.startsWith(month);
   const income = db.txns.filter((t) => t.kind === 'income' && inMonth(t.date)).reduce((s, t) => s + t.amount, 0);
+  // transfers between cash and bank are not income or expense
   const expense = db.txns.filter((t) => t.kind === 'expense' && inMonth(t.date)).reduce((s, t) => s + t.amount, 0);
   return { income, expense, profit: income - expense };
 }
@@ -50,7 +116,8 @@ export function payrollCalc(db: DB, staffId: string, month: string) {
   } else if (st.salaryType === 'daily') { basic = st.rate * days; hourly = st.rate / s.workHoursPerDay; }
   else { basic = st.rate * s.workHoursPerDay * days; hourly = st.rate; }
   const overtimePay = otHours * hourly * s.overtimeMultiplier;
-  const advance = db.advances.filter((a) => a.staffId === staffId && !a.recovered).reduce((n, a) => n + a.amount, 0);
+  // advances given up to the end of this month are recovered from this month's salary
+  const advance = db.advances.filter((a) => a.staffId === staffId && !a.recovered && a.date <= `${month}-31`).reduce((n, a) => n + a.amount, 0);
   return { basic, daysPresent: days, overtimeHours: otHours, overtimePay, allowance: st.allowance || 0, advance };
 }
 
@@ -83,20 +150,29 @@ export function amountInWords(amount: number, currency: string) {
 
 /** Project (job) accounts: contract value incl. additional work, money collected, expenses and profit. */
 export function projectFinance(db: DB, job: Pick<Job, 'id' | 'value' | 'extras' | 'materials'>) {
+  const tasks = db.tasks.filter((t) => t.jobId === job.id && Number(t.spent) > 0);
+  const labourHours = tasks.reduce((n, t) => n + Number(t.spent), 0);
+  const labour = tasks.reduce((n, t) => n + Number(t.spent) * hourlyCost(db.staff.find((x) => x.id === t.staffId), db.settings), 0);
   const base = Number(job.value) || 0;
   const extras = (job.extras || []).reduce((n, e) => n + (Number(e.amount) || 0), 0);
-  const contract = base + extras;
+  const credited = db.invoices.filter((i) => i.jobId === job.id).reduce((n, i) => n + (Number(i.credited) || 0), 0);
+  const contract = base + extras - credited;
   const txns = db.txns.filter((t) => t.jobId === job.id);
-  const collected = txns.filter((t) => t.kind === 'income').reduce((n, t) => n + t.amount, 0);
-  const spent = txns.filter((t) => t.kind === 'expense').reduce((n, t) => n + t.amount, 0);
+  // money paid back to the customer (credit-note refunds) lowers what was collected, it is not a project cost
+  const isRefund = (t: Txn) => t.kind === 'expense' && t.category === 'Refund';
+  const refunds = txns.filter(isRefund).reduce((n, t) => n + t.amount, 0);
+  const collected = txns.filter((t) => t.kind === 'income').reduce((n, t) => n + t.amount, 0) - refunds;
+  const spent = txns.filter((t) => t.kind === 'expense' && !isRefund(t)).reduce((n, t) => n + t.amount, 0);
   const materials = (job.materials || []).reduce((n, m) => n + (Number(m.issued) || 0) * (db.items.find((i) => i.id === m.itemId)?.cost || 0), 0);
-  const expenses = spent + materials;
+  const expenses = spent + materials + labour;
   const invoiced = db.invoices.filter((i) => i.jobId === job.id).reduce((n, i) => n + docTotals(i).total, 0);
   const byCategory: Record<string, number> = {};
-  txns.filter((t) => t.kind === 'expense').forEach((t) => (byCategory[t.category] = (byCategory[t.category] || 0) + t.amount));
+  txns.filter((t) => t.kind === 'expense' && !isRefund(t)).forEach((t) => (byCategory[t.category] = (byCategory[t.category] || 0) + t.amount));
   if (materials) byCategory['Materials from stock'] = (byCategory['Materials from stock'] || 0) + materials;
+  if (labour) byCategory['Staff time (from tasks)'] = (byCategory['Staff time (from tasks)'] || 0) + labour;
   return {
-    base, extras, contract, collected, toCollect: Math.max(0, contract - collected), spent, materials, expenses, invoiced,
-    profit: contract - expenses, cash: collected - expenses, margin: contract ? (contract - expenses) / contract : 0, byCategory,
+    base, extras, credited, contract, collected, toCollect: Math.max(0, contract - collected), spent, materials, labour, labourHours, expenses, invoiced,
+    // labour is the cost of salaried time already paid through payroll, so it lowers profit but not cash
+    profit: contract - expenses, cash: collected - spent - materials, margin: contract ? (contract - expenses) / contract : 0, byCategory,
   };
 }

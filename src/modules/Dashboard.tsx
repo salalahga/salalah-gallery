@@ -1,7 +1,9 @@
 import { Hammer, Wallet, AlertTriangle, TrendingUp, FileText, ShoppingCart, Plus, Receipt } from 'lucide-react';
 import { useDB } from '../core/store';
 import { useT } from '../core/i18n';
-import { docTotals, finance, invoiceBalance, lastMonths, money, monthLabel } from '../core/calc';
+import { docTotals, finance, invoiceBalance, lastMonths, money, monthLabel, balances, fmtDate } from '../core/calc';
+import { daysFrom } from '../core/helpers';
+import { Landmark, Wrench } from 'lucide-react';
 import { statusMeta, lookup, dueLabel, priorityTone, expiringDocs, expiryLabel } from '../core/helpers';
 import { IdCard } from 'lucide-react';
 import { go } from '../core/router';
@@ -20,6 +22,9 @@ export default function Dashboard() {
   const byType = s.workTypes.map((w) => ({ label: w.name, color: w.color, value: active.filter((j) => j.workTypeId === w.id).length })).filter((p) => p.value);
   const hr = new Date().getHours();
   const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+  const bal = balances(db);
+  const chequesSoon = db.cheques.filter((c) => ['pending', 'deposited'].includes(c.status) && (daysFrom(c.date) ?? 99) <= 7).sort((a, b) => a.date.localeCompare(b.date));
+  const services = db.services.filter((x) => ['open', 'scheduled'].includes(x.status));
   const openTasks = db.tasks.filter((x) => x.status !== 'done').sort((a, b) => (a.dueDate || '9').localeCompare(b.dueDate || '9')).slice(0, 6);
 
   return (
@@ -80,6 +85,23 @@ export default function Dashboard() {
         </div>
       </div>
 
+      <div className="grid g2 mb">
+        <div className="card">
+          <h3><span className="flex"><Landmark size={16} />Cash & bank</span><a className="link" href="#/accounts">Accounts</a></h3>
+          <ul className="list">
+            <li><span className="grow">Cash in hand</span><b className={bal.cash < 0 ? 'neg' : ''}>{money(bal.cash, s)}</b></li>
+            <li><span className="grow">Bank</span><b className={bal.bank < 0 ? 'neg' : ''}>{money(bal.bank, s)}</b></li>
+            {chequesSoon.map((c) => <li key={c.id}><div className="grow"><div className="title">Cheque {c.chequeNo} · {c.party}</div><div className="muted">{c.direction === 'received' ? 'to deposit' : 'we pay'} · {fmtDate(c.date)}</div></div><Badge tone={(daysFrom(c.date) ?? 0) <= 0 ? 'red' : 'amber'}>{c.direction === 'received' ? '+' : '−'}{money(c.amount, s)}</Badge></li>)}
+            {!chequesSoon.length && <li className="muted">No cheques due this week</li>}
+          </ul>
+        </div>
+        <div className="card">
+          <h3><span className="flex"><Wrench size={16} />Service calls</span><a className="link" href="#/services">Service</a></h3>
+          <ul className="list">{services.slice(0, 5).map((x) => <li key={x.id} style={{ cursor: 'pointer' }} onClick={() => go('services', { id: x.id })}><div className="grow"><div className="title">{x.issue}</div><div className="muted">{L.customer(x.customerId)?.name} · {L.staff(x.staffId)?.name || 'unassigned'}</div></div>{x.warranty && <Badge tone="green">Warranty</Badge>}<Badge tone={x.status === 'open' ? 'red' : 'blue'}>{x.visitDate ? fmtDate(x.visitDate) : 'Open'}</Badge></li>)}
+            {!services.length && <Empty title="No open service calls" />}</ul>
+        </div>
+      </div>
+
       {docs.length > 0 && <div className="card mb">
         <h3><span className="flex"><IdCard size={16} color="#c2410c" />Staff documents expiring</span><a className="link" href="#/staff">Staff</a></h3>
         <ul className="list">{docs.slice(0, 6).map((x) => { const e = expiryLabel(x.days); return <li key={x.staff.id + x.doc.id}><div className="grow"><div className="title">{x.staff.name} — {x.doc.type}</div><div className="muted">{x.doc.number || ''} · {x.doc.expiry}</div></div><Badge tone={e.tone}>{e.text}</Badge></li>; })}</ul>
@@ -96,7 +118,7 @@ export default function Dashboard() {
           <h3>Recent transactions <a className="link" href="#/accounts">Accounts</a></h3>
           <ul className="list">
             {[...db.txns].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6).map((x) => (
-              <li key={x.id}><div className="grow"><div className="title">{x.description}</div><div className="muted">{x.date} · {x.category}</div></div><b className={x.kind === 'income' ? 'pos' : 'neg'}>{x.kind === 'income' ? '+' : '−'}{money(x.amount, s)}</b></li>
+              <li key={x.id}><div className="grow"><div className="title">{x.description}</div><div className="muted">{x.date} · {x.category}</div></div><b className={x.kind === 'income' ? 'pos' : x.kind === 'expense' ? 'neg' : ''}>{x.kind === 'income' ? '+' : x.kind === 'expense' ? '−' : '⇄ '}{money(x.amount, s)}</b></li>
             ))}
           </ul>
         </div>

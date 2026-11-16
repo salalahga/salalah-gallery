@@ -22,7 +22,7 @@ export const defaultSettings: Settings = {
   incomeCategories: ['Job Payment', 'Product Sale', 'CNC Service', 'Advance', 'Other'],
   roles: ['Carpenter', 'CNC Operator', 'Helper', 'Polisher', 'Supervisor', 'Designer', 'Driver', 'Accountant'],
   quoteTerms: '50% advance to confirm the order. Balance on delivery.\nQuotation valid for 15 days.\nDelivery time starts after design approval.',
-  workHoursPerDay: 8, overtimeMultiplier: 1.25, workingDaysPerMonth: 26, timezone: 'Asia/Muscat', dailyHour: 8,
+  workHoursPerDay: 8, overtimeMultiplier: 1.25, workingDaysPerMonth: 26, gratuityDaysPerYear: 30, annualLeaveDays: 30, openingCash: 0, openingBank: 0, timezone: 'Asia/Muscat', dailyHour: 8,
   plugins: { whatsapp: { enabled: true }, print: { enabled: true }, maps: { enabled: true }, export: { enabled: true } },
   website: {
     hero: 'Carpentry, precise CNC cutting, signboards and complete interior woodwork in Salalah.',
@@ -36,7 +36,7 @@ export const defaultSettings: Settings = {
 };
 
 export function emptyDB(): Omit<DB, 'settings'> {
-  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [] };
+  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [], cheques: [], creditNotes: [], services: [], recurring: [] };
 }
 
 export function seed(): DB {
@@ -48,8 +48,8 @@ export function seed(): DB {
       { id: 'c3', createdAt: ts, name: 'Fatima Al Kathiri', phone: '+968 9988 7766', address: 'Awqad', type: 'Individual' },
     ],
     staff: [
-      { id: 's1', createdAt: ts, name: 'Rajesh Kumar', role: 'Carpenter', phone: '+968 9500 1111', nationality: 'Indian', salaryType: 'monthly', rate: 220, allowance: 20, skills: ['Kitchen', 'Wardrobe', 'Doors'], active: true, color: '#b45309', joinDate: '2022-03-01', documents: [{ id: 'd1', type: 'Resident card', number: 'RC-12345678', expiry: d(12) }, { id: 'd2', type: 'Passport', number: 'P1234567', expiry: d(400) }] },
-      { id: 's2', createdAt: ts, name: 'Anil Thomas', role: 'CNC Operator', phone: '+968 9500 2222', nationality: 'Indian', salaryType: 'monthly', rate: 260, allowance: 25, skills: ['CNC', 'AutoCAD', 'Aspire'], active: true, color: '#2563eb', joinDate: '2023-01-15' },
+      { id: 's1', createdAt: ts, name: 'Rajesh Kumar', role: 'Carpenter', phone: '+968 9500 1111', nationality: 'Indian', salaryType: 'monthly', rate: 220, allowance: 20, skills: ['Kitchen', 'Wardrobe', 'Doors'], active: true, color: '#b45309', joinDate: '2022-03-01', leaveFrom: `${new Date().getFullYear()}-01-01`, leaveOpening: 0, documents: [{ id: 'd1', type: 'Resident card', number: 'RC-12345678', expiry: d(12) }, { id: 'd2', type: 'Passport', number: 'P1234567', expiry: d(400) }] },
+      { id: 's2', createdAt: ts, name: 'Anil Thomas', role: 'CNC Operator', phone: '+968 9500 2222', nationality: 'Indian', salaryType: 'monthly', rate: 260, allowance: 25, skills: ['CNC', 'AutoCAD', 'Aspire'], active: true, color: '#2563eb', joinDate: '2023-01-15', leaveFrom: `${new Date().getFullYear()}-01-01`, leaveOpening: 4 },
       { id: 's3', createdAt: ts, name: 'Shafeeq M', role: 'Polisher', phone: '+968 9500 3333', nationality: 'Indian', salaryType: 'daily', rate: 9, allowance: 0, skills: ['PU', 'Lacquer'], active: true, color: '#9333ea', joinDate: '2024-06-10' },
       { id: 's4', createdAt: ts, name: 'Babu Raj', role: 'Helper', phone: '+968 9500 4444', nationality: 'Indian', salaryType: 'daily', rate: 7, allowance: 0, skills: ['Loading', 'Assembly'], active: true, color: '#059669', joinDate: '2024-09-01' },
     ],
@@ -73,7 +73,7 @@ export function seed(): DB {
       { id: 'q2', createdAt: ts, number: `QT-${new Date().getFullYear()}-0002`, date: d(-1), validUntil: d(14), customerId: 'c2', title: 'CNC Jali panels', status: 'sent', discount: 0, vat: 5, items: [{ id: 'l4', description: 'CNC cutting jali 18mm MDF', workTypeId: 'wt-cnc', qty: 12, unit: 'pcs', rate: 35 }] },
     ],
     invoices: [
-      { id: 'i1', createdAt: ts, number: `INV-${new Date().getFullYear()}-0001`, date: d(-10), dueDate: d(20), customerId: 'c1', title: 'Kitchen cabinets — advance', jobId: 'j1', quotationId: 'q1', discount: 0, vat: 5, paid: 900,
+      { id: 'i1', createdAt: ts, number: '1212', date: d(-10), dueDate: d(20), customerId: 'c1', title: 'Kitchen cabinets — advance', jobId: 'j1', quotationId: 'q1', discount: 0, vat: 5, paid: 900,
         items: [{ id: 'l5', description: '50% advance — kitchen cabinets', qty: 1, unit: 'lot', rate: 900 }] },
     ],
     txns: [
@@ -111,6 +111,9 @@ export function seed(): DB {
       { id: 'sup1', createdAt: ts, name: 'Dhofar Timber Trading', phone: '+968 2329 0000', category: 'Boards & Sheets', address: 'Industrial Area, Salalah' },
       { id: 'sup2', createdAt: ts, name: 'Gulf ACP & Acrylic', phone: '+968 9911 2233', category: 'Signage materials' },
     ],
-    purchases: [], receipts: [], deliveries: [], measurements: [],
+    purchases: [], receipts: [], deliveries: [], measurements: [], creditNotes: [],
+    cheques: [{ id: 'ch1', createdAt: ts, direction: 'received', chequeNo: '004512', bank: 'Bank Dhofar', date: d(5), amount: 500, party: 'Dhofar Interiors LLC', status: 'pending', note: 'PDC for CNC jali panels' }],
+    services: [{ id: 'sv1', createdAt: ts, number: 'SV-0001', date: d(-1), customerId: 'c3', jobId: 'j3', issue: 'Wardrobe door hinge loose', status: 'open', warranty: true }],
+    recurring: [{ id: 'rc1', createdAt: ts, description: 'Workshop rent', category: 'Rent', amount: 250, method: 'Bank', day: 1, active: true, startMonth: d(0).slice(0, 7), lastMonth: d(0).slice(0, 7) }],
   };
 }

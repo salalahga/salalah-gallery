@@ -399,3 +399,15 @@ th .bi .ar { font-size: 12px; } .num .bi, th.num .bi { align-items: flex-end; }
 .add-row.expense-row { grid-template-columns: 150px 170px minmax(0, 1fr) 110px 100px auto; }
 @media (max-width: 860px) { .add-row, .add-row.expense-row { grid-template-columns: 1fr 1fr; } .add-row > input:not([type]), .add-row > input[placeholder^="What"], .add-row > input[placeholder^="e.g."] { grid-column: 1 / -1; } }
 tfoot td { padding: 12px 14px; border-top: 2px solid var(--line); background: var(--panel-2); }
+
+/* --- reports, statements, entitlements --- */
+.span-all{grid-column:1/-1}
+.readonly-value{padding:9px 0;font-weight:600}
+.entitle{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin-top:6px}
+.entitle>div{border:1px solid var(--line);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.entitle b{font-size:17px}
+.entitle small{color:var(--ink-3);font-size:12px}
+@media (max-width:700px){.entitle{grid-template-columns:1fr}}
+.aging td.num{white-space:nowrap}
+tr.total-row td{font-weight:700;border-top:2px solid var(--line)}
+@media print{.no-print{display:none!important}}

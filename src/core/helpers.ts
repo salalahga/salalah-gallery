@@ -7,7 +7,9 @@ export const statusMeta: Record<string, { label: string; tone: string; color: st
   todo: { label: 'To do', tone: 'gray', color: '#9a8a7c' }, doing: { label: 'In progress', tone: 'amber', color: '#d97706' },
   review: { label: 'Review', tone: 'blue', color: '#2563eb' }, done: { label: 'Done', tone: 'green', color: '#15803d' },
   draft: { label: 'Draft', tone: 'gray', color: '#9a8a7c' }, sent: { label: 'Sent', tone: 'blue', color: '#2563eb' },
-  accepted: { label: 'Accepted', tone: 'green', color: '#15803d' }, rejected: { label: 'Rejected', tone: 'red', color: '#c2410c' },
+  accepted: { label: 'Accepted', tone: 'green', color: '#15803d' }, rejected: { label: 'Rejected', tone: 'red', color: '#c2410c' }, expired: { label: 'Expired', tone: 'gray', color: '#9a8a7c' },
+  open: { label: 'Open', tone: 'red', color: '#c2410c' }, pending: { label: 'Pending', tone: 'amber', color: '#d97706' }, deposited: { label: 'Deposited', tone: 'blue', color: '#2563eb' },
+  cleared: { label: 'Cleared', tone: 'green', color: '#15803d' }, bounced: { label: 'Bounced', tone: 'red', color: '#c2410c' },
   unpaid: { label: 'Unpaid', tone: 'red', color: '#c2410c' }, partial: { label: 'Partial', tone: 'amber', color: '#d97706' }, paid: { label: 'Paid', tone: 'green', color: '#15803d' },
   idea: { label: 'Idea', tone: 'gray', color: '#9a8a7c' }, scheduled: { label: 'Scheduled', tone: 'blue', color: '#2563eb' }, posted: { label: 'Posted', tone: 'green', color: '#15803d' },
 };

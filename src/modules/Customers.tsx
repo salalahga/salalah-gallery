@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Plus, Trash2, Phone, MessageCircle, Mail } from 'lucide-react';
+import { Plus, Trash2, Phone, MessageCircle, Mail, ScrollText } from 'lucide-react';
+import { CustomerStatement } from '../components/Statement';
+import { customerLinks } from '../core/ledger';
 import { store, useDB } from '../core/store';
 import type { Customer } from '../core/types';
 import { docTotals, invoiceBalance, money } from '../core/calc';
@@ -11,7 +13,7 @@ import { MapPin } from 'lucide-react';
 
 export default function Customers() {
   const db = useDB(); const s = db.settings; const t = useT(); const maps = usePlugin('maps').enabled;
-  const [q, setQ] = useState(''); const [edit, setEdit] = useState<Partial<Customer> | null>(null);
+  const [q, setQ] = useState(''); const [edit, setEdit] = useState<Partial<Customer> | null>(null); const [stmt, setStmt] = useState<Customer | null>(null);
   const list = db.customers.filter((c) => (c.name + c.phone + c.email).toLowerCase().includes(q.toLowerCase()));
   const stats = (id: string) => ({
     jobs: db.jobs.filter((j) => j.customerId === id).length,
@@ -31,6 +33,7 @@ export default function Customers() {
               <td>{c.phone}<div className="muted">{c.email}</div></td><td><Badge>{c.type || '—'}</Badge></td>
               <td className="num">{st.jobs}</td><td className="num">{money(st.billed, s)}</td><td className={`num ${st.due > 0 ? 'neg' : ''}`}>{money(st.due, s)}</td>
               <td onClick={(e) => e.stopPropagation()}><div className="row-actions">
+                <button className="icon-btn" title="Statement of account" onClick={() => setStmt(c)}><ScrollText size={16} /></button>
                 {c.phone && <a className="icon-btn" href={`tel:${c.phone}`} title="Call"><Phone size={16} /></a>}
                 {c.phone && <a className="icon-btn" target="_blank" rel="noreferrer" href={waLink(c.phone, `Hello ${c.name}, `)} title="WhatsApp"><MessageCircle size={16} /></a>}
                 {c.email && <a className="icon-btn" href={`mailto:${c.email}`} title="Email"><Mail size={16} /></a>}
@@ -39,7 +42,11 @@ export default function Customers() {
             </tr>); })}</tbody></table></div> : <Empty title="No customers yet" action={<button className="btn primary" onClick={() => setEdit({})}>Add customer</button>} />}
       </div>
       {edit && <Modal open title={edit.id ? 'Edit customer' : 'New customer'} onClose={() => setEdit(null)} footer={<>
-        {edit.id && <button className="btn danger ghost" onClick={() => { if (confirmDelete(edit.name)) { store.remove('customers', edit.id!); setEdit(null); } }}><Trash2 size={15} />Delete</button>}
+        {edit.id && <button className="btn danger ghost" onClick={() => {
+          const links = customerLinks(edit as Customer);
+          if (links.length) return toast(`${edit.name} has ${links.join(', ')} — they cannot be deleted. Edit the name or add a note instead.`);
+          if (confirmDelete(edit.name)) { store.remove('customers', edit.id!); setEdit(null); } }}><Trash2 size={15} />Delete</button>}
+        {edit.id && <button className="btn ghost" onClick={() => { setStmt(edit as Customer); setEdit(null); }}><ScrollText size={15} />Statement</button>}
         <span className="spacer" /><button className="btn" onClick={() => setEdit(null)}>Cancel</button><button className="btn primary" onClick={save}>Save</button></>}>
         <div className="form two">
           <Field label="Name" span={3}><input autoFocus value={edit.name || ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
@@ -50,6 +57,7 @@ export default function Customers() {
           <Field label="Notes" span={3}><textarea value={edit.notes || ''} onChange={(e) => setEdit({ ...edit, notes: e.target.value })} /></Field>
         </div>
       </Modal>}
+      {stmt && <CustomerStatement customer={stmt} onClose={() => setStmt(null)} />}
     </>
   );
 }

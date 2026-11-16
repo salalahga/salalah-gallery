@@ -26,6 +26,8 @@ export const TRIGGERS = {
   'measurement.created': 'New site measurement recorded',
   'purchase.received': 'Supplier goods received',
   'receipt.created': 'Advance / payment receipt issued',
+  'service.created': 'New service / warranty call',
+  'cheque.due': 'Cheque due today (daily)',
 };
 
 const id = () => crypto.randomBytes(6).toString('hex');
@@ -57,7 +59,7 @@ export function render(tpl, vars) {
   }).replace(/\s—\s*$/gm, '');
 }
 
-export function createAutomations(db, plugins, { tick }) {
+export function createAutomations(db, plugins, { tick, backup }) {
   async function rules() {
     const r = await db.get('SELECT value FROM kv WHERE key = ?', ['automations']);
     if (r) return JSON.parse(r.value);
@@ -146,6 +148,7 @@ export function createAutomations(db, plugins, { tick }) {
       if (col === 'customers' && after && !before) await fire('customer.created', { customer: after, raw });
       if (col === 'measurements' && after && !before) await fire('measurement.created', { measurement: after, customer: customer || { name: after.customerName, phone: after.customerPhone }, staff: await one('staff', after.measuredBy), raw });
       if (col === 'purchases' && after && after.status === 'received' && before?.status !== 'received') await fire('purchase.received', { purchase: after, supplier: await one('suppliers', after.supplierId), raw });
+      if (col === 'services' && after && !before) await fire('service.created', { service: after, customer, job: await one('jobs', after.jobId), staff: await one('staff', after.staffId), raw });
       if (col === 'receipts' && after && !before) await fire('receipt.created', { receipt: after, customer, amount: money(after.amount, cur), raw });
     } catch (e) { console.error('automation', e); }
   }
@@ -192,7 +195,27 @@ export function createAutomations(db, plugins, { tick }) {
       const days = Math.round((new Date(d.expiry + 'T00:00:00Z') - new Date(date + 'T00:00:00Z')) / 864e5);
       if (marks.has(days)) await fire('document.expiring', { staff: st, doc: d, days, raw: { staff: st.name, ...d, days } });
     }
+    for (const c of (await all('cheques')).filter((x) => ['pending', 'deposited'].includes(x.status) && x.date === date)) {
+      await fire('cheque.due', { cheque: c, amount: money(c.amount, cur), raw: c });
+    }
+    await postRecurring(date).catch((e) => console.error('recurring', e));
+    if (backup) await backup.run(date).catch((e) => console.error('backup', e));
+    await db.run('DELETE FROM audit WHERE at < ?', [Date.now() - 365 * 864e5]).catch(() => {});
     return true;
+  }
+  /** Post due recurring expenses. Ids are deterministic (rec-<rule>-<month>) so a month is never posted twice. */
+  async function postRecurring(date) {
+    let n = 0;
+    for (const r of await all('recurring')) {
+      for (const m of dueMonths(r, date)) {
+        const txn = { id: `rec-${r.id}-${m}`, createdAt: new Date().toISOString(), date: `${m}-${String(Math.min(28, Number(r.day) || 1)).padStart(2, '0')}`, kind: 'expense', category: r.category, amount: Number(r.amount) || 0, method: r.method || 'Bank', description: r.description, ref: 'Recurring', recurringId: r.id, ...(r.jobId ? { jobId: r.jobId } : {}) };
+        const exists = await db.get('SELECT id FROM records WHERE col = ? AND id = ?', ['txns', txn.id]);
+        if (!exists) { await db.run(UPSERT, ['txns', txn.id, JSON.stringify(txn), tick(), 0]); n++; }
+        r.lastMonth = m;
+      }
+      if (r.lastMonth) await db.run(UPSERT, ['recurring', r.id, JSON.stringify({ ...r, updatedAt: new Date().toISOString() }), tick(), 0]);
+    }
+    return n;
   }
   function start() { setInterval(() => daily().catch((e) => console.error('daily', e)), 5 * 60e3); setTimeout(() => daily().catch(() => {}), 10e3); }
 
@@ -212,5 +235,20 @@ export function createAutomations(db, plugins, { tick }) {
     return out;
   }
 
-  return { TRIGGERS, rules, saveRules, onChange, daily, start, test, fire };
+  return { TRIGGERS, rules, saveRules, onChange, daily, start, test, fire, postRecurring };
+}
+
+/** Months (YYYY-MM) a recurring rule still has to post as of `date`: after lastMonth, from startMonth, day reached. */
+export function dueMonths(r, date) {
+  if (!r || r.active === false || !(Number(r.amount) > 0)) return [];
+  const cur = date.slice(0, 7); const day = Number(date.slice(8, 10));
+  const out = [];
+  let [y, m] = (r.lastMonth || '').split('-').map(Number);
+  if (y) { m++; if (m > 12) { m = 1; y++; } } else [y, m] = String(r.startMonth || cur).split('-').map(Number);
+  for (let i = 0; i < 24; i++) {
+    const key = `${y}-${String(m).padStart(2, '0')}`;
+    if (key > cur || (key === cur && day < Math.min(28, Number(r.day) || 1))) break;
+    out.push(key); m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
 }
