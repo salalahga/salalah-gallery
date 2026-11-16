@@ -12,6 +12,7 @@ import { createAutomations, DEFAULT_RULES } from './automations.js';
 import { buildIcs } from './ical.js';
 import { createFiles } from './files.js';
 import { createBackup } from './backup.js';
+import * as fetcher from './fetcher.js';
 
 const PORT = Number(process.env.PORT) || 8787;
 const db = await openDb();
@@ -291,6 +292,76 @@ app.get('/api/files/:id', wrap(async (req, res) => {
   if (!f) return res.status(404).end();
   res.setHeader('Content-Type', f.mime); res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   res.end(f.buf);
+}));
+
+// ---- material catalogue: find images online (office only) ----
+const officeOnly = (req, res, next) => (['admin', 'manager'].includes(req.user.role) ? next() : res.status(403).json({ error: 'Not allowed' }));
+app.post('/api/fetch/scan', auth, officeOnly, wrap(async (req, res) => {
+  try { res.json(await fetcher.scan(String(req.body?.url || ''))); }
+  catch (e) { res.status(e.status || 502).json({ error: e.status ? e.message : `Could not open that link (${e.cause?.code || e.name})` }); }
+}));
+app.post('/api/fetch/image', auth, officeOnly, wrap(async (req, res) => {
+  try { const r = await fetcher.image(String(req.body?.url || '')); res.setHeader('Content-Type', r.type); res.end(r.buf); }
+  catch (e) { res.status(e.status || 502).json({ error: e.status ? e.message : `Could not download that image (${e.cause?.code || e.name})` }); }
+}));
+
+// ---- customer selection links (public: anyone with the link) ----
+const pickHits = new Map();
+const pickLimit = (req) => { const k = req.ip || ''; const now = Date.now(); const h = (pickHits.get(k) || []).filter((t) => now - t < 60e3); h.push(now); pickHits.set(k, h); return h.length <= 60; };
+async function findSelection(token) {
+  if (!/^[a-f0-9]{24,64}$/.test(token)) return null;
+  const rows = await db.all("SELECT id, data FROM records WHERE col = 'selections' AND deleted = 0 AND data LIKE ?", [`%"token":"${token}"%`]);
+  for (const r of rows) { const d = JSON.parse(r.data); if (d.token === token) return d; }
+  return null;
+}
+async function publicSelection(sel) {
+  const s = (await readSettings())?.value || {};
+  const items = []; const brandIds = new Set();
+  for (const id of sel.itemIds || []) {
+    const r = await db.get("SELECT data FROM records WHERE col = 'catalog' AND id = ? AND deleted = 0", [id]);
+    if (!r) continue; const it = JSON.parse(r.data); brandIds.add(it.brandId);
+    items.push({ id: it.id, brandId: it.brandId, code: it.code, name: it.name, category: it.category, image: it.image, finish: it.finish, size: it.size, thickness: it.thickness, unit: it.unit, ...(sel.showPrices ? { price: it.price } : {}) });
+  }
+  const brands = [];
+  for (const id of brandIds) { const r = await db.get("SELECT data FROM records WHERE col = 'brands' AND id = ? AND deleted = 0", [id]); if (r) { const b = JSON.parse(r.data); brands.push({ id: b.id, name: b.name, logo: b.logo }); } }
+  let customer = null;
+  if (sel.customerId) { const r = await db.get("SELECT data FROM records WHERE col = 'customers' AND id = ? AND deleted = 0", [sel.customerId]); if (r) customer = JSON.parse(r.data).name; }
+  return {
+    business: { name: s.businessName, nameAr: s.businessNameAr, logo: s.logo, phone: s.phone, whatsapp: s.whatsapp, currency: s.currency || 'OMR', tagline: s.tagline },
+    selection: { title: sel.title, message: sel.message, status: sel.status, picks: sel.picks || [], maxPicks: sel.maxPicks, showPrices: !!sel.showPrices, submittedAt: sel.submittedAt, customerName: sel.customerName || customer || '', customerPhone: sel.customerPhone || '', customerNote: sel.customerNote || '' },
+    items, brands,
+  };
+}
+app.get('/api/public/pick/:token', wrap(async (req, res) => {
+  if (!pickLimit(req)) return res.status(429).json({ error: 'Too many requests, try again in a minute' });
+  const sel = await findSelection(req.params.token);
+  if (!sel) return res.status(404).json({ error: 'This link is not valid any more' });
+  if (sel.status === 'sent') {
+    const next = { ...sel, status: 'viewed', viewedAt: new Date().toISOString() };
+    await db.run(UPSERT, ['selections', sel.id, JSON.stringify(next), tick(), 0]);
+  }
+  res.setHeader('Cache-Control', 'no-store');
+  res.json(await publicSelection(sel));
+}));
+app.post('/api/public/pick/:token', wrap(async (req, res) => {
+  if (!pickLimit(req)) return res.status(429).json({ error: 'Too many requests, try again in a minute' });
+  const sel = await findSelection(req.params.token);
+  if (!sel) return res.status(404).json({ error: 'This link is not valid any more' });
+  if (sel.status === 'closed') return res.status(409).json({ error: 'This selection is closed. Please contact us to change it.' });
+  const b = req.body || {}; const allowed = new Set(sel.itemIds || []);
+  const str = (v, n) => String(v ?? '').trim().slice(0, n);
+  const picks = (Array.isArray(b.picks) ? b.picks : []).filter((p) => p && allowed.has(p.itemId)).slice(0, 200)
+    .map((p) => ({ itemId: p.itemId, qty: Number(p.qty) > 0 ? Math.min(1e6, Number(p.qty)) : undefined, area: str(p.area, 80) || undefined, note: str(p.note, 300) || undefined }));
+  if (!picks.length) return res.status(400).json({ error: 'Please choose at least one item' });
+  if (sel.maxPicks && picks.length > sel.maxPicks) return res.status(400).json({ error: `Please choose at most ${sel.maxPicks}` });
+  const name = str(b.customerName, 80); const phone = str(b.customerPhone, 30);
+  if (!name && !sel.customerId) return res.status(400).json({ error: 'Please enter your name' });
+  const before = sel;
+  const after = { ...sel, picks, status: 'submitted', submittedAt: new Date().toISOString(), customerName: name || sel.customerName, customerPhone: phone || sel.customerPhone, customerNote: str(b.customerNote, 600), updatedAt: new Date().toISOString() };
+  await db.run(UPSERT, ['selections', sel.id, JSON.stringify(after), tick(), 0]);
+  void audit({ id: null, name: `Customer ${after.customerName || ''}`.trim() }, 'selections', sel.id, 'update', `${sel.title} — ${picks.length} picked`);
+  void automations.onChange('selections', before, after);
+  res.json({ ok: true, submittedAt: after.submittedAt });
 }));
 
 // ---- activity log & backups (owner only) ----

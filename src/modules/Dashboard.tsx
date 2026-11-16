@@ -40,6 +40,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {db.selections.some((x) => x.status === 'submitted' && !x.quotationId) && <div className="alert mb" style={{ cursor: 'pointer' }} onClick={() => go('catalog', { selections: '1' })}>
+        🎨 {db.selections.filter((x) => x.status === 'submitted' && !x.quotationId).map((x) => `${x.customerName || L.customer(x.customerId)?.name || 'A customer'} chose materials for “${x.title}”`).join(' · ')} — open to make a quotation</div>}
       <div className="grid g4 mb">
         <Stat label={`${t('Income')} · ${monthLabel(month)}`} value={money(f.income, s)} icon={<TrendingUp size={20} />} tone="green" sub={`${t('Profit')}: ${money(f.profit, s)}`} />
         <Stat label={`${t('Expense')} · ${monthLabel(month)}`} value={money(f.expense, s)} icon={<Wallet size={20} />} tone="red" />

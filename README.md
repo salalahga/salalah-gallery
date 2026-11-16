@@ -9,6 +9,7 @@ An all-in-one app for a carpentry / CNC workshop: jobs, staff, payroll, quotatio
 | Workshop | **Dashboard** | Income/expense, dues, active jobs, staff tasks, low stock, 6-month cash-flow chart |
 | | **Jobs** | Kanban + list of work orders per work type (CNC, Carpentry, Board, Polish, Installation, or your own). Each type has its own detail fields. Assign team, track progress, record materials, issue from stock, create invoice, WhatsApp update to customer |
 | | **Tasks** | Assign tasks to staff, drag across To do → Done, send the task to staff on WhatsApp. *Hours actually worked* are costed to the project at the person's hourly cost |
+| | **Material catalogue** | Laminates, boards, hardware and colours per company (brand) with picture, code, finish, size and price. Import from **pictures** (file name = code), a **PDF catalogue** (drag a box round each swatch), a **spreadsheet**, or **from the web** (search online, paste the page link, pick the pictures). **Send a link** to a customer: they see the pictures and codes on their phone without logging in, tick what they like with quantity / room, and send — you see it at once and turn it into a quotation |
 | | **Service & warranty** | After-sales complaints and repair visits: assign a technician, schedule the visit, WhatsApp technician and customer, warranty detected from the project (warranty months run from completion), bill chargeable visits |
 | | **Inventory** | Boards/sheets/hardware and products for sale, reorder alerts, purchases post to accounts |
 | Team | **Staff** | Profiles, roles, skills, monthly/daily/hourly pay, end-of-service gratuity and annual-leave balance |
@@ -80,6 +81,10 @@ Every money correction goes through `src/core/ledger.ts`, so Accounts, invoices,
 - Customers, suppliers and staff with history cannot be deleted (staff can be set to Inactive); projects with money are cancelled, not deleted.
 
 Photos are stored on the server (`/api/files/…`) instead of inside records, so syncing stays fast; older inline photos are moved automatically when the server starts.
+
+## Customer selection links
+
+`/pick/<token>` is a public page (no login). The token is 128-bit random. The page only receives the materials offered in that selection (no prices unless you allow them, nothing else from the database), can only choose among those items, is rate-limited, and is read-only once you close the selection. Web import downloads go through the server with checks that block private and internal addresses.
 
 ## Logins & online database
 

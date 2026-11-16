@@ -7,7 +7,7 @@
 import type { ComponentType } from 'react';
 import {
   LayoutDashboard, Hammer, ListChecks, Users, CalendarCheck, Wallet, Contact, FileText, Receipt, Landmark, Boxes, ShoppingCart,
-  Share2, Globe, Settings as Cog, Puzzle, Zap, Truck, Ruler, FileCheck2, Wrench, BarChart3, type LucideIcon,
+  Share2, Globe, Settings as Cog, Puzzle, Zap, Truck, Ruler, FileCheck2, Wrench, BarChart3, Palette, type LucideIcon,
 } from 'lucide-react';
 import Dashboard from './Dashboard';
 import Jobs from './Jobs';
@@ -31,6 +31,7 @@ import Documents from './Documents';
 import Automations from './Automations';
 import Services from './Services';
 import Reports from './Reports';
+import Catalog from './Catalog';
 
 import type { Role } from '../core/session';
 
@@ -44,6 +45,7 @@ export const modules: ModuleDef[] = [
   { id: 'tasks', label: 'Tasks', group: 'Workshop', icon: ListChecks, component: Tasks, desc: 'Assign work to staff' },
   { id: 'measurements', label: 'Site measurements', group: 'Workshop', icon: Ruler, component: Measurements, desc: 'Measure on site with photos & GPS, then quote' },
   { id: 'services', label: 'Service & warranty', group: 'Workshop', icon: Wrench, component: Services, desc: 'After-sales complaints, repair visits and warranty' },
+  { id: 'catalog', label: 'Material catalogue', group: 'Workshop', icon: Palette, component: Catalog, desc: 'Laminates, boards, hardware & colours by company — send customers a link to choose' },
   { id: 'purchases', label: 'Purchases', group: 'Workshop', icon: Truck, component: Purchases, roles: OFFICE, desc: 'Suppliers, purchase orders, goods received' },
   { id: 'inventory', label: 'Inventory', group: 'Workshop', icon: Boxes, component: Inventory, desc: 'Boards, hardware & products stock' },
   { id: 'staff', label: 'Staff', group: 'Team', icon: Users, component: StaffPage, roles: OFFICE, desc: 'Employees, skills and documents' },

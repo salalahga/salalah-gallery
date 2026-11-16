@@ -28,6 +28,7 @@ export const TRIGGERS = {
   'receipt.created': 'Advance / payment receipt issued',
   'service.created': 'New service / warranty call',
   'cheque.due': 'Cheque due today (daily)',
+  'selection.submitted': 'Customer submitted a material selection',
 };
 
 const id = () => crypto.randomBytes(6).toString('hex');
@@ -43,6 +44,7 @@ export const DEFAULT_RULES = [
   { name: 'Overdue invoices reminder', trigger: 'invoice.overdue', actions: [{ type: 'telegram', template: '⏰ Overdue: {{invoice.number}} — {{customer.name}} owes {{balance}} (due {{invoice.dueDate}})' }] },
   { name: 'Staff document expiring', trigger: 'document.expiring', actions: [{ type: 'telegram', template: '🪪 {{staff.name}} — {{doc.type}} {{doc.number}} expires on {{doc.expiry}} ({{days}} days left)' }] },
   { name: 'New site measurement', trigger: 'measurement.created', actions: [{ type: 'telegram', template: '📐 New site measurement {{measurement.number}} by {{staff.name}} for {{customer.name}} — {{measurement.site}}' }] },
+  { name: 'Customer picked materials', trigger: 'selection.submitted', actions: [{ type: 'telegram', template: '🎨 {{customer.name}} chose {{count}} item(s) for "{{selection.title}}": {{picks}}' }] },
   { name: 'Send all events to webhooks (n8n / Make / Sheets)', trigger: '*', actions: [{ type: 'webhook' }] },
 ].map((r) => ({ id: id(), enabled: false, ...r }));
 
@@ -148,6 +150,10 @@ export function createAutomations(db, plugins, { tick, backup }) {
       if (col === 'customers' && after && !before) await fire('customer.created', { customer: after, raw });
       if (col === 'measurements' && after && !before) await fire('measurement.created', { measurement: after, customer: customer || { name: after.customerName, phone: after.customerPhone }, staff: await one('staff', after.measuredBy), raw });
       if (col === 'purchases' && after && after.status === 'received' && before?.status !== 'received') await fire('purchase.received', { purchase: after, supplier: await one('suppliers', after.supplierId), raw });
+      if (col === 'selections' && after && after.status === 'submitted' && before?.submittedAt !== after.submittedAt) {
+        const names = []; for (const p of after.picks || []) { const it = await one('catalog', p.itemId); if (it) names.push(`${it.code} ${it.name}${p.qty ? ' ×' + p.qty : ''}${p.area ? ' (' + p.area + ')' : ''}`); }
+        await fire('selection.submitted', { selection: after, customer: customer || { name: after.customerName, phone: after.customerPhone }, picks: names.join(', '), count: String((after.picks || []).length), raw: after });
+      }
       if (col === 'services' && after && !before) await fire('service.created', { service: after, customer, job: await one('jobs', after.jobId), staff: await one('staff', after.staffId), raw });
       if (col === 'receipts' && after && !before) await fire('receipt.created', { receipt: after, customer, amount: money(after.amount, cur), raw });
     } catch (e) { console.error('automation', e); }

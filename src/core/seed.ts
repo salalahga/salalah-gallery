@@ -36,7 +36,7 @@ export const defaultSettings: Settings = {
 };
 
 export function emptyDB(): Omit<DB, 'settings'> {
-  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [], cheques: [], creditNotes: [], services: [], recurring: [] };
+  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [], cheques: [], creditNotes: [], services: [], recurring: [], brands: [], catalog: [], selections: [] };
 }
 
 export function seed(): DB {
@@ -113,6 +113,17 @@ export function seed(): DB {
     ],
     purchases: [], receipts: [], deliveries: [], measurements: [], creditNotes: [],
     cheques: [{ id: 'ch1', createdAt: ts, direction: 'received', chequeNo: '004512', bank: 'Bank Dhofar', date: d(5), amount: 500, party: 'Dhofar Interiors LLC', status: 'pending', note: 'PDC for CNC jali panels' }],
+    brands: [
+      { id: 'br1', createdAt: ts, name: 'Formica', website: 'https://www.formica.com', country: 'USA' },
+      { id: 'br2', createdAt: ts, name: 'Egger', website: 'https://www.egger.com', country: 'Austria' },
+    ],
+    catalog: [
+      { id: 'ci1', createdAt: ts, brandId: 'br1', code: 'F7912', name: 'Grey Glace', category: 'Laminate', finish: 'Matte', size: '1220×2440', thickness: '0.8mm', price: 14, unit: 'sheet', active: true },
+      { id: 'ci2', createdAt: ts, brandId: 'br1', code: 'F5374', name: 'Cherry Wood', category: 'Laminate', finish: 'Suede', size: '1220×2440', thickness: '0.8mm', price: 15, unit: 'sheet', active: true },
+      { id: 'ci3', createdAt: ts, brandId: 'br2', code: 'H1145 ST10', name: 'Natural Bardolino Oak', category: 'Board decor', finish: 'Feelwood', size: '2800×2070', thickness: '18mm', price: 32, unit: 'sheet', active: true },
+      { id: 'ci4', createdAt: ts, brandId: 'br2', code: 'W980 ST2', name: 'Platinum White', category: 'Board decor', finish: 'Smoothtouch', size: '2800×2070', thickness: '18mm', price: 28, unit: 'sheet', active: true },
+    ],
+    selections: [],
     services: [{ id: 'sv1', createdAt: ts, number: 'SV-0001', date: d(-1), customerId: 'c3', jobId: 'j3', issue: 'Wardrobe door hinge loose', status: 'open', warranty: true }],
     recurring: [{ id: 'rc1', createdAt: ts, description: 'Workshop rent', category: 'Rent', amount: 250, method: 'Bank', day: 1, active: true, startMonth: d(0).slice(0, 7), lastMonth: d(0).slice(0, 7) }],
   };

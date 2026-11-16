@@ -15,7 +15,7 @@ import { Modal, Field, Badge, PageHeader, SearchBox, Tabs, Avatar, Progress, Emp
 
 import { useCanWrite } from '../core/session';
 import { usePlugin, useWaText, gcalLink, mapsLink, QR } from '../plugins/hooks';
-import { CalendarPlus, MapPin, Star, Printer, Truck, HandCoins, Wrench } from 'lucide-react';
+import { CalendarPlus, MapPin, Star, Printer, Truck, HandCoins, Wrench, Palette } from 'lucide-react';
 
 const STATUSES: JobStatus[] = ['enquiry', 'design', 'production', 'finishing', 'installation', 'completed'];
 
@@ -228,6 +228,14 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
         <div className="section-title">CNC / board cutting list</div>
         <CuttingListEditor value={job.cutting} onChange={(cutting) => set({ cutting })} items={db.items} s={s} readOnly={readOnly} title={`${job.code || ''} ${job.title || ''}`} />
         <Field label="Notes" span={3}><textarea value={job.notes || ''} onChange={(e) => set({ notes: e.target.value })} /></Field>
+        {exists && !readOnly && (() => { const sels = db.selections.filter((x) => x.jobId === job.id); return <>
+          <div className="section-title">Customer material choices ({sels.length})</div>
+          <div className="span-3">
+            <ul className="list">{sels.map((x) => <li key={x.id} style={{ cursor: 'pointer' }} onClick={() => go('catalog', { selections: '1' })}><div className="grow"><div className="title">{x.title}</div>
+              <div className="muted">{x.picks.length ? x.picks.map((p) => db.catalog.find((c) => c.id === p.itemId)?.code).filter(Boolean).join(', ') : 'waiting for the customer'}</div></div>
+              <Badge tone={x.status === 'submitted' ? 'green' : x.status === 'viewed' ? 'blue' : 'gray'}>{x.status === 'submitted' ? 'Chosen' : x.status === 'viewed' ? 'Opened' : x.status === 'closed' ? 'Closed' : 'Sent'}</Badge></li>)}</ul>
+            <button className="btn sm" onClick={() => go('catalog', { share: '1', job: job.id! })}><Palette size={14} />Send materials to choose</button>
+          </div></>; })()}
         {exists && <>
           <div className="section-title">Tasks for this job ({tasks.length})</div>
           <div className="span-3">

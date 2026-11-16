@@ -111,6 +111,7 @@ export interface DB {
   quotations: Quotation[]; invoices: Invoice[]; txns: Txn[]; items: Item[]; sales: Sale[]; socialAccounts: SocialAccount[]; socialPosts: SocialPost[];
   suppliers: Supplier[]; purchases: Purchase[]; receipts: Receipt[]; deliveries: Delivery[]; measurements: Measurement[];
   cheques: Cheque[]; creditNotes: CreditNote[]; services: ServiceCall[]; recurring: Recurring[];
+  brands: Brand[]; catalog: CatalogItem[]; selections: Selection[];
   settings: Settings;
 }
 export type Collection = Exclude<keyof DB, 'settings'>;
@@ -153,4 +154,19 @@ export interface ServiceCall extends Base {
 /** Expense posted automatically every month (rent, electricity, internet…). */
 export interface Recurring extends Base {
   description: string; category: string; amount: number; method: string; day: number; active: boolean; startMonth: string; lastMonth?: string; jobId?: ID;
+}
+
+/** A material company / brand whose catalogue you keep (Formica, Egger, Hettich, Asian Paints…). */
+export interface Brand extends Base { name: string; logo?: string; website?: string; country?: string; supplierId?: ID; notes?: string }
+/** One material in a brand's catalogue: a laminate, board decor, handle, hinge, paint colour… */
+export interface CatalogItem extends Base {
+  brandId: ID; code: string; name: string; category: string; image?: string; finish?: string; size?: string; thickness?: string;
+  price?: number; unit?: string; tags?: string[]; notes?: string; sourceUrl?: string; stockItemId?: ID; active?: boolean;
+}
+export interface SelectionPick { itemId: ID; qty?: number; area?: string; note?: string }
+/** A set of catalogue items shared with a customer by link; the customer picks what they want. */
+export interface Selection extends Base {
+  token: string; title: string; message?: string; customerId?: ID; jobId?: ID; itemIds: ID[]; maxPicks?: number;
+  status: 'sent' | 'viewed' | 'submitted' | 'closed'; picks: SelectionPick[]; viewedAt?: string; submittedAt?: string;
+  customerName?: string; customerPhone?: string; customerNote?: string; quotationId?: ID; showPrices?: boolean;
 }

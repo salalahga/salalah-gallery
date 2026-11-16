@@ -6,7 +6,7 @@ import { storePhoto } from '../core/upload';
 import { toast } from './ui';
 
 /** Resize a picked/camera image to max `max` px and JPEG-compress it, so photos stay small in the database. */
-export function compressImage(file: File, max = 1280, quality = 0.72): Promise<string> {
+export function compressImage(file: Blob, max = 1280, quality = 0.72): Promise<string> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
     const img = new Image();
