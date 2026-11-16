@@ -4,12 +4,15 @@ import { store, useDB, nextInvoiceNumber, today, uid, takeAdvances } from '../co
 import { useRole } from '../core/session';
 import { Photos } from '../components/Photos';
 import { CuttingListEditor } from '../components/CuttingListEditor';
+import { ProjectMoney } from '../components/ProjectMoney';
+import { projectFinance } from '../core/calc';
+import { Wallet, ClipboardList } from 'lucide-react';
 import { useRoute, go } from '../core/router';
 import type { Job, JobStatus } from '../core/types';
 import { money, fmtDate } from '../core/calc';
 import { statusMeta, lookup, dueLabel, priorityTone, waLink } from '../core/helpers';
 import { Modal, Field, Badge, PageHeader, SearchBox, Tabs, Avatar, Progress, Empty, toast, confirmDelete } from '../components/ui';
-import { useT } from '../core/i18n';
+
 import { useCanWrite } from '../core/session';
 import { usePlugin, useWaText, gcalLink, mapsLink, QR } from '../plugins/hooks';
 import { CalendarPlus, MapPin, Star, Printer, Truck, HandCoins } from 'lucide-react';
@@ -21,9 +24,9 @@ export function blankJob(code: string, workTypeId?: string): Partial<Job> {
 }
 
 export default function Jobs() {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const can = useCanWrite()('jobs');
+  const db = useDB(); const s = db.settings; const L = lookup(db); const can = useCanWrite()('jobs');
   const { params } = useRoute();
-  const [view, setView] = useState<'board' | 'list'>('board');
+  const [view, setView] = useState<'board' | 'list' | 'accounts'>('board');
   const [type, setType] = useState('all');
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState<Partial<Job> | null>(null);
@@ -41,7 +44,7 @@ export default function Jobs() {
 
   const save = () => {
     if (!edit?.title?.trim()) return toast('Please enter a job title');
-    store.upsert('jobs', edit as Job); toast('Job saved'); setEdit(null);
+    const { _tab, ...rec } = edit as Job & { _tab?: string }; void _tab; store.upsert('jobs', rec as Job); toast('Project saved'); setEdit(null);
   };
   const moveTo = (id: string, status: JobStatus) => {
     const j = db.jobs.find((x) => x.id === id); if (!j || j.status === status) return;
@@ -50,17 +53,17 @@ export default function Jobs() {
 
   return (
     <>
-      <PageHeader title={t('Jobs')} sub="Track every work order — CNC, carpentry, board work, polish and installation."
+      <PageHeader title="Projects" sub="Every work is a project — its value, money collected, expenses and profit, plus CNC, carpentry, board, polish and installation details."
         actions={<>
-          <div className="tabs"><button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}><LayoutGrid size={15} />Board</button><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}><List size={15} />List</button></div>
-          {can && <button className="btn primary" onClick={() => setEdit(blankJob(newCode(), type !== 'all' ? type : undefined))}><Plus size={16} />{t('New job')}</button>}
+          <div className="tabs"><button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}><LayoutGrid size={15} />Board</button><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}><List size={15} />List</button>{can && <button className={view === 'accounts' ? 'on' : ''} onClick={() => setView('accounts')}><Wallet size={15} />Income & expenses</button>}</div>
+          {can && <button className="btn primary" onClick={() => setEdit(blankJob(newCode(), type !== 'all' ? type : undefined))}><Plus size={16} />New project</button>}
         </>} />
       <div className="toolbar">
         <Tabs value={type} onChange={setType} tabs={[{ id: 'all', label: 'All work', count: db.jobs.length }, ...s.workTypes.map((w) => ({ id: w.id, label: w.name, count: db.jobs.filter((j) => j.workTypeId === w.id).length }))]} />
         <SearchBox value={q} onChange={setQ} placeholder="Search jobs, customers…" />
       </div>
 
-      {view === 'board' ? (
+      {view === 'accounts' ? <ProjectsReport list={list} open={(j) => setEdit({ ...structuredClone(j), _tab: 'money' } as Partial<Job>)} /> : view === 'board' ? (
         <div className="kanban">
           {STATUSES.map((st) => { const items = list.filter((j) => j.status === st); return (
             <div key={st} className={`kcol ${over === st ? 'over' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(st); }} onDragLeave={() => setOver(null)} onDrop={() => { if (drag) moveTo(drag, st); setDrag(null); setOver(null); }}>
@@ -104,30 +107,45 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
   const materials = job.materials || [];
   const wa = useWaText(); const gcal = usePlugin('gcal').enabled; const maps = usePlugin('maps').enabled; const review = usePlugin('reviews'); const jobcard = usePlugin('jobcard').enabled;
   const [card, setCard] = useState(false);
+  const [tab, setTab] = useState<'details' | 'money'>((job as { _tab?: 'money' })._tab || 'details');
   const site = job.details?.['Site address'] || cust?.address;
 
   const issueMaterials = () => {
-    for (const m of materials) { const it = L.item(m.itemId); if (it) store.upsert('items', { ...it, qty: it.qty - m.qty }); }
-    const cost = materials.reduce((n, m) => n + (L.item(m.itemId)?.cost || 0) * m.qty, 0);
-    toast(`Stock reduced · material cost ${money(cost, s)}`);
+    let cost = 0;
+    const next = materials.map((m) => {
+      const pending = Math.max(0, (Number(m.qty) || 0) - (Number(m.issued) || 0));
+      const it = L.item(m.itemId);
+      if (it && pending) { store.upsert('items', { ...it, qty: it.qty - pending }); cost += pending * it.cost; }
+      return { ...m, issued: Math.max(Number(m.issued) || 0, Number(m.qty) || 0) };
+    });
+    if (!cost) return toast('Everything on this list is already issued');
+    const saved = { ...job, materials: next } as Job; store.upsert('jobs', saved); setJob(saved);
+    toast(`Stock reduced · ${money(cost, s)} added to project expenses`);
   };
   const makeInvoice = () => {
-    const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), customerId: job.customerId, title: job.title || '', jobId: job.id, discount: 0, vat: s.vatRate, paid: 0,
-      items: [{ id: uid(), description: job.title || 'Job', workTypeId: job.workTypeId, qty: 1, unit: 'lot', rate: job.value || 0 }] });
+    const first = !db.invoices.some((i) => i.jobId === job.id);
+    const extras = (job.extras || []).filter((e) => !e.invoiced);
+    const items = [
+      ...(first ? [{ id: uid(), description: job.title || 'Project', workTypeId: job.workTypeId, qty: 1, unit: 'lot', rate: job.value || 0 }] : []),
+      ...extras.map((e) => ({ id: uid(), description: `Additional work: ${e.description}`, qty: 1, unit: 'lot', rate: e.amount })),
+    ];
+    if (!items.length) return toast('Everything on this project is already invoiced');
+    const inv = store.upsert('invoices', { number: nextInvoiceNumber(), date: today(), customerId: job.customerId, title: first ? job.title || '' : `${job.title} — additional work`, jobId: job.id, discount: 0, vat: s.vatRate, paid: 0, items });
+    if (extras.length) store.upsert('jobs', { ...job, extras: (job.extras || []).map((e) => (extras.includes(e) ? { ...e, invoiced: true } : e)) } as Job);
     const adv = takeAdvances(inv.id, job.id, job.quotationId);
     if (adv) { store.upsert('invoices', { ...inv, paid: adv }); toast(`Advance ${money(adv, s)} already received — shown as paid`); }
     go('invoices', { id: inv.id });
   };
 
   return (
-    <Modal open wide title={exists ? `${job.code} · Edit job` : 'New job'} onClose={onClose}
+    <Modal open wide title={exists ? `${job.code} · ${job.title || 'Project'}` : 'New project'} onClose={onClose}
       footer={readOnly ? <button className="btn" onClick={onClose}>Close</button> : <>
         {exists && <button className="btn danger ghost" onClick={() => { if (confirmDelete('this job')) { store.remove('jobs', job.id!); onClose(); } }}><Trash2 size={15} />Delete</button>}
         {exists && <button className="btn ghost" onClick={makeInvoice}><Receipt size={15} />Create invoice</button>}
         {exists && <button className="btn ghost" onClick={() => go('documents', { receipt: 'new', job: job.id! })}><HandCoins size={15} />Advance receipt</button>}
         {exists && <button className="btn ghost" onClick={() => go('documents', { delivery: 'new', job: job.id! })}><Truck size={15} />Delivery note</button>}
         {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('jobUpdate', { customer: cust.name, code: job.code, title: job.title, status: statusMeta[job.status!].label, business: s.businessName }))}><MessageCircle size={15} />WhatsApp update</a>}
-        <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={onSave}>Save job</button>
+        <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={onSave}>Save project</button>
       </>}>
       {exists && (jobcard || gcal || (maps && site) || (review.enabled && job.status === 'completed')) && <div className="chips" style={{ marginBottom: 14 }}>
         {jobcard && <button className="btn sm" onClick={() => setCard(true)}><Printer size={14} />Job card</button>}
@@ -136,6 +154,10 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
         {!readOnly && review.enabled && job.status === 'completed' && cust?.phone && <a className="btn sm" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('review', { customer: cust.name, title: job.title, business: s.businessName, link: review.link || '' }))}><Star size={14} />Ask for Google review</a>}
       </div>}
       {card && <JobCard job={job} onClose={() => setCard(false)} />}
+      {exists && !readOnly && <div className="toolbar"><div className="tabs">
+        <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}><ClipboardList size={15} />Details</button>
+        <button className={tab === 'money' ? 'on' : ''} onClick={() => setTab('money')}><Wallet size={15} />Project accounts</button></div></div>}
+      {tab === 'money' && exists && !readOnly ? <ProjectMoney job={job as Job} setJob={(j) => setJob(j)} /> :
       <fieldset className="form" disabled={readOnly}>
         <Field label="Job title" span={2}><input autoFocus value={job.title || ''} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Kitchen cabinets — Villa 12" /></Field>
         <Field label="Job code"><input value={job.code || ''} onChange={(e) => set({ code: e.target.value })} /></Field>
@@ -145,7 +167,7 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
         <Field label="Customer">
           <select value={job.customerId || ''} onChange={(e) => set({ customerId: e.target.value })}><option value="">— Select —</option>{db.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         </Field>
-        {!readOnly && <Field label={`Job value (${s.currency})`}><input type="number" value={job.value ?? 0} onChange={(e) => set({ value: +e.target.value })} /></Field>}
+        {!readOnly && <Field label={`Project value — contract (${s.currency})`}><input type="number" value={job.value ?? 0} onChange={(e) => set({ value: +e.target.value })} /></Field>}
         <Field label="Status"><select value={job.status} onChange={(e) => set({ status: e.target.value as JobStatus })}>{[...STATUSES, 'cancelled'].map((x) => <option key={x} value={x}>{statusMeta[x].label}</option>)}</select></Field>
         <Field label="Priority"><select value={job.priority} onChange={(e) => set({ priority: e.target.value as Job['priority'] })}>{['low', 'normal', 'high', 'urgent'].map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label={`Progress — ${job.progress || 0}%`}><input type="range" min={0} max={100} step={5} value={job.progress || 0} onChange={(e) => set({ progress: +e.target.value })} style={{ padding: 0 }} /></Field>
@@ -189,7 +211,7 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
             <button className="btn sm" onClick={() => go('tasks', { new: '1', job: job.id! })}><Plus size={14} />Assign task</button>
           </div>
         </>}
-      </fieldset>
+      </fieldset>}
     </Modal>
   );
 }
@@ -218,5 +240,33 @@ function JobCard({ job, onClose }: { job: Partial<Job>; onClose: () => void }) {
         <p style={{ fontSize: 11, color: '#888', marginTop: 16 }}>{s.businessName} · printed {new Date().toLocaleDateString('en-GB')}</p>
       </div></div>
     </Modal>
+  );
+}
+
+function ProjectsReport({ list, open }: { list: Job[]; open: (j: Job) => void }) {
+  const db = useDB(); const s = db.settings; const L = lookup(db);
+  const rows = list.filter((j) => j.status !== 'cancelled').map((j) => ({ j, f: projectFinance(db, j) }));
+  const sum = (k: 'contract' | 'collected' | 'toCollect' | 'expenses' | 'profit') => rows.reduce((n, r) => n + r.f[k], 0);
+  if (!rows.length) return <div className="card"><Empty title="No projects yet" /></div>;
+  return (
+    <>
+      <div className="grid g4 mb">
+        <div className="stat tone-wood"><div><div className="stat-label">Total project value</div><div className="stat-value">{money(sum('contract'), s)}</div></div></div>
+        <div className="stat tone-green"><div><div className="stat-label">Collected</div><div className="stat-value">{money(sum('collected'), s)}</div><div className="stat-sub">To collect {money(sum('toCollect'), s)}</div></div></div>
+        <div className="stat tone-red"><div><div className="stat-label">Project expenses</div><div className="stat-value">{money(sum('expenses'), s)}</div></div></div>
+        <div className="stat tone-blue"><div><div className="stat-label">Profit (value − expenses)</div><div className={`stat-value ${sum('profit') >= 0 ? 'pos' : 'neg'}`}>{money(sum('profit'), s)}</div></div></div>
+      </div>
+      <div className="card"><div className="table-wrap"><table>
+        <thead><tr><th>Project</th><th>Customer</th><th>Status</th><th className="num">Value</th><th className="num">Collected</th><th className="num">To collect</th><th className="num">Expenses</th><th className="num">Profit</th><th className="num">Margin</th></tr></thead>
+        <tbody>{rows.map(({ j, f }) => <tr key={j.id} className="click" onClick={() => open(j)}>
+          <td><b>{j.title}</b><div className="muted">{j.code}{f.extras ? ` · +${money(f.extras, s)} additional` : ''}</div></td>
+          <td>{L.customer(j.customerId)?.name || '—'}</td><td><Badge tone={statusMeta[j.status].tone}>{statusMeta[j.status].label}</Badge></td>
+          <td className="num">{money(f.contract, s)}</td><td className="num pos">{money(f.collected, s)}</td>
+          <td className={`num ${f.toCollect > 0 ? 'neg' : ''}`}>{money(f.toCollect, s)}</td><td className="num">{money(f.expenses, s)}</td>
+          <td className={`num ${f.profit >= 0 ? 'pos' : 'neg'}`}><b>{money(f.profit, s)}</b></td><td className="num">{f.contract ? `${Math.round(f.margin * 100)}%` : '—'}</td>
+        </tr>)}</tbody>
+        <tfoot><tr><td colSpan={3}><b>Total</b></td><td className="num"><b>{money(sum('contract'), s)}</b></td><td className="num"><b>{money(sum('collected'), s)}</b></td><td className="num"><b>{money(sum('toCollect'), s)}</b></td><td className="num"><b>{money(sum('expenses'), s)}</b></td><td className="num"><b>{money(sum('profit'), s)}</b></td><td /></tr></tfoot>
+      </table></div></div>
+    </>
   );
 }

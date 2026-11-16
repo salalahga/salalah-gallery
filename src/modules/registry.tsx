@@ -38,7 +38,7 @@ const OFFICE: Role[] = ['admin', 'manager'];
 
 export const modules: ModuleDef[] = [
   { id: 'dashboard', label: 'Dashboard', group: 'Workshop', icon: LayoutDashboard, component: Dashboard, roles: OFFICE, desc: 'Overview of everything' },
-  { id: 'jobs', label: 'Jobs', group: 'Workshop', icon: Hammer, component: Jobs, desc: 'CNC, carpentry, board & other work orders' },
+  { id: 'jobs', label: 'Projects', group: 'Workshop', icon: Hammer, component: Jobs, desc: 'Every work as a project: value, collections, expenses, profit' },
   { id: 'tasks', label: 'Tasks', group: 'Workshop', icon: ListChecks, component: Tasks, desc: 'Assign work to staff' },
   { id: 'measurements', label: 'Site measurements', group: 'Workshop', icon: Ruler, component: Measurements, desc: 'Measure on site with photos & GPS, then quote' },
   { id: 'purchases', label: 'Purchases', group: 'Workshop', icon: Truck, component: Purchases, roles: OFFICE, desc: 'Suppliers, purchase orders, goods received' },

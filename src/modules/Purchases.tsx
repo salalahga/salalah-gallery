@@ -33,7 +33,7 @@ export default function Purchases() {
     if (!pay || pay.amount <= 0) return;
     store.upsert('purchases', { ...pay.p, paid: (Number(pay.p.paid) || 0) + pay.amount });
     const cat = pay.p.lines.some((l) => /board|sheet|mdf|ply|acp|acrylic/i.test(l.description + (L.item(l.itemId)?.category || ''))) ? 'Boards & Sheets' : 'Materials';
-    store.upsert('txns', { date: today(), kind: 'expense', category: cat, amount: pay.amount, method: pay.method, description: `${pay.p.number} — ${supplier(pay.p.supplierId)?.name || 'Supplier'}`, ref: pay.p.billNo || pay.p.number });
+    store.upsert('txns', { date: today(), kind: 'expense', category: cat, amount: pay.amount, method: pay.method, description: `${pay.p.number} — ${supplier(pay.p.supplierId)?.name || 'Supplier'}`, ref: pay.p.billNo || pay.p.number, jobId: pay.p.jobId });
     setPay(null); toast('Supplier payment recorded in Accounts');
   };
   const setLine = (i: number, p: Partial<PurchaseLine>) => po && setPo({ ...po, lines: po.lines!.map((l, k) => (k === i ? { ...l, ...p } : l)) });

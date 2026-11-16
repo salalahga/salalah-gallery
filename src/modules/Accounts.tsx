@@ -10,12 +10,12 @@ import { useT } from '../core/i18n';
 export default function Accounts() {
   const db = useDB(); const s = db.settings; const t = useT(); const { params } = useRoute();
   const [month, setMonth] = useState(today().slice(0, 7)); const [all, setAll] = useState(false);
-  const [kind, setKind] = useState<'all' | 'income' | 'expense'>('all'); const [q, setQ] = useState('');
+  const [kind, setKind] = useState<'all' | 'income' | 'expense'>('all'); const [q, setQ] = useState(''); const [proj, setProj] = useState('');
   const [edit, setEdit] = useState<Partial<Txn> | null>(null);
   useEffect(() => { if (params.new) { setEdit({ kind: params.new === 'income' ? 'income' : 'expense', date: today(), method: 'Cash', category: params.new === 'income' ? s.incomeCategories[0] : s.expenseCategories[0] }); go('accounts'); } }, [params.new]); // eslint-disable-line
   const shift = (n: number) => { const d = new Date(month + '-01T00:00:00'); d.setMonth(d.getMonth() + n); setMonth(d.toISOString().slice(0, 7)); setAll(false); };
   const period = all ? undefined : month;
-  const list = useMemo(() => db.txns.filter((x) => (!period || x.date.startsWith(period)) && (kind === 'all' || x.kind === kind) && (x.description + x.category + (x.ref || '')).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date)), [db.txns, period, kind, q]);
+  const list = useMemo(() => db.txns.filter((x) => (!period || x.date.startsWith(period)) && (kind === 'all' || x.kind === kind) && (!proj || (proj === 'none' ? !x.jobId : x.jobId === proj)) && (x.description + x.category + (x.ref || '')).toLowerCase().includes(q.toLowerCase())).sort((a, b) => b.date.localeCompare(a.date)), [db.txns, period, kind, q, proj]);
   const f = finance(db, period);
   const byCat = (k: 'income' | 'expense') => { const m: Record<string, number> = {}; db.txns.filter((x) => x.kind === k && (!period || x.date.startsWith(period))).forEach((x) => (m[x.category] = (m[x.category] || 0) + x.amount)); return Object.entries(m).sort((a, b) => b[1] - a[1]); };
   const save = () => { if (!edit?.amount || !edit.description) return toast('Enter amount and description'); store.upsert('txns', edit as Txn); setEdit(null); toast('Saved'); };
@@ -51,12 +51,12 @@ export default function Accounts() {
           <div className="totals" style={{ width: '100%' }}><div className="grand"><span>Net</span><span>{money(f.profit, s)}</span></div></div>
         </div>
       </div>
-      <div className="toolbar"><Tabs value={kind} onChange={setKind} tabs={[{ id: 'all', label: 'All' }, { id: 'income', label: t('Income') }, { id: 'expense', label: t('Expense') }]} /><SearchBox value={q} onChange={setQ} /></div>
+      <div className="toolbar"><Tabs value={kind} onChange={setKind} tabs={[{ id: 'all', label: 'All' }, { id: 'income', label: t('Income') }, { id: 'expense', label: t('Expense') }]} /><SearchBox value={q} onChange={setQ} /><select style={{ width: 'auto' }} value={proj} onChange={(e) => setProj(e.target.value)}><option value="">All projects</option><option value="none">General / overhead</option>{db.jobs.map((j) => <option key={j.id} value={j.id}>{j.code} · {j.title}</option>)}</select></div>
       <div className="card">
         {list.length ? <div className="table-wrap"><table>
-          <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Method</th><th className="num">Amount</th><th /></tr></thead>
+          <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Project</th><th>Method</th><th className="num">Amount</th><th /></tr></thead>
           <tbody>{list.map((x) => <tr key={x.id} className="click" onClick={() => setEdit({ ...x })}>
-            <td>{fmtDate(x.date)}</td><td><b>{x.description}</b>{x.ref && <div className="muted">{x.ref}</div>}</td><td><Badge tone={x.kind === 'income' ? 'green' : 'gray'}>{x.category}</Badge></td><td>{x.method}</td>
+            <td>{fmtDate(x.date)}</td><td><b>{x.description}</b>{x.ref && <div className="muted">{x.ref}</div>}</td><td><Badge tone={x.kind === 'income' ? 'green' : 'gray'}>{x.category}</Badge></td><td>{x.jobId ? <span className="muted">{db.jobs.find((j) => j.id === x.jobId)?.code || '—'}</span> : '—'}</td><td>{x.method}</td>
             <td className={`num ${x.kind === 'income' ? 'pos' : 'neg'}`}><b>{x.kind === 'income' ? '+' : '−'}{money(x.amount, s)}</b></td>
             <td onClick={(e) => e.stopPropagation()}><button className="icon-btn" onClick={() => confirmDelete('this entry') && store.remove('txns', x.id)}><Trash2 size={15} /></button></td></tr>)}</tbody></table></div>
           : <Empty title="No transactions in this period" />}
@@ -69,6 +69,7 @@ export default function Accounts() {
           <Field label="Category"><select value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })}>{cats.map((c) => <option key={c}>{c}</option>)}</select></Field>
           <Field label="Description" span={3}><input value={edit.description || ''} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
           <Field label="Method"><select value={edit.method} onChange={(e) => setEdit({ ...edit, method: e.target.value })}>{['Cash', 'Bank', 'Card', 'Cheque', 'Online'].map((m) => <option key={m}>{m}</option>)}</select></Field>
+          <Field label="Project (optional)"><select value={edit.jobId || ''} onChange={(e) => setEdit({ ...edit, jobId: e.target.value || undefined })}><option value="">— General / overhead —</option>{db.jobs.map((j) => <option key={j.id} value={j.id}>{j.code} · {j.title}</option>)}</select></Field>
           <Field label="Reference / bill no."><input value={edit.ref || ''} onChange={(e) => setEdit({ ...edit, ref: e.target.value })} /></Field>
         </div>
       </Modal>}

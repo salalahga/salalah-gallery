@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Plus, Printer, Trash2, MessageCircle, HandCoins, Truck } from 'lucide-react';
-import { store, useDB, nextNumber, today, uid } from '../core/store';
+import { store, useDB, nextNumber, today, uid, advanceOpen } from '../core/store';
 import { useRoute, go } from '../core/router';
 import type { Delivery, Receipt, Settings, Customer, DB } from '../core/types';
 import { money, fmtDate, amountInWords, docTotals, invoiceBalance } from '../core/calc';
@@ -84,7 +84,7 @@ export default function Documents() {
     setDEdit(null); setDView(d); toast('Delivery note saved');
   };
   const custInvoices = db.invoices.filter((i) => i.customerId === rEdit?.customerId);
-  const advOpen = db.receipts.filter((r) => r.kind === 'advance' && !r.invoiceId).reduce((n, r) => n + r.amount, 0);
+  const advOpen = db.receipts.filter((r) => r.kind === 'advance').reduce((n, r) => n + advanceOpen(r), 0);
   const month = today().slice(0, 7);
 
   return (
@@ -103,7 +103,7 @@ export default function Documents() {
           <thead><tr><th>Number</th><th>Date</th><th>Customer</th><th>Type</th><th>Against</th><th>Method</th><th className="num">Amount</th><th /></tr></thead>
           <tbody>{db.receipts.map((r) => <tr key={r.id} className="click" onClick={() => setRView(r)}>
             <td><b>{r.number}</b></td><td>{fmtDate(r.date)}</td><td>{L.customer(r.customerId)?.name}</td>
-            <td><Badge tone={r.kind === 'advance' ? 'amber' : 'green'}>{r.kind}</Badge>{r.kind === 'advance' && r.invoiceId && <div className="muted">credited to invoice</div>}</td>
+            <td><Badge tone={r.kind === 'advance' ? 'amber' : 'green'}>{r.kind}</Badge>{r.kind === 'advance' && r.invoiceId && <div className="muted">{advanceOpen(r) > 0.0005 ? `${money(advanceOpen(r), s)} not yet invoiced` : 'credited to invoice'}</div>}</td>
             <td className="muted">{againstLabel(db, r) || '—'}</td><td>{r.method}</td><td className="num"><b>{money(r.amount, s)}</b></td>
             <td><Printer size={15} /></td></tr>)}</tbody></table></div> : <Empty title="No receipts yet" hint="Issue an advance receipt from a job or quotation, or a payment receipt from an invoice." />}</div>
       </> : <div className="card">{db.deliveries.length ? <div className="table-wrap"><table>

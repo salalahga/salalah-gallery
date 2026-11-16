@@ -77,7 +77,7 @@ function Workspace() {
   const groups = [...new Set(modules.map((m) => m.group))];
   const office = role !== 'staff';
   const quick = office ? [
-    { label: t('New job'), go: () => go('jobs', { new: '1' }) },
+    { label: 'New project', go: () => go('jobs', { new: '1' }) },
     { label: t('New quotation'), go: () => go('quotations', { new: '1' }) },
     { label: t('New sale'), go: () => go('sales', { new: '1' }) },
     { label: t('Add expense'), go: () => go('accounts', { new: 'expense' }) },

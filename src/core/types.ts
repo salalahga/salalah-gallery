@@ -10,7 +10,9 @@ export type JobStatus = 'enquiry' | 'design' | 'production' | 'finishing' | 'ins
 export interface Job extends Base {
   code: string; title: string; customerId?: ID; workTypeId?: ID; status: JobStatus; priority: 'low' | 'normal' | 'high' | 'urgent';
   startDate?: string; dueDate?: string; value: number; staffIds: ID[]; details: Record<string, string>; notes?: string; quotationId?: ID;
-  materials: { itemId: ID; qty: number }[]; progress: number;
+  materials: { itemId: ID; qty: number; issued?: number }[]; progress: number;
+  /** Additional / variation work added after the original contract — raises the project value. */
+  extras?: ProjectExtra[];
   photos?: Photo[]; cutting?: CuttingList;
 }
 
@@ -50,7 +52,10 @@ export interface Invoice extends Base {
   paid: number; jobId?: ID; quotationId?: ID; notes?: string;
 }
 
-export interface Txn extends Base { date: string; kind: 'income' | 'expense'; category: string; amount: number; method: string; description: string; ref?: string }
+export interface ProjectExtra { id: ID; date: string; description: string; amount: number; invoiced?: boolean }
+
+/** jobId links money in/out to a project, so every project has its own income & expenses. */
+export interface Txn extends Base { date: string; kind: 'income' | 'expense'; category: string; amount: number; method: string; description: string; ref?: string; jobId?: ID }
 
 export interface Item extends Base {
   name: string; kind: 'material' | 'product'; category: string; sku?: string; unit: string; qty: number; cost: number; price: number;
@@ -95,6 +100,8 @@ export interface Purchase extends Base {
 }
 export interface Receipt extends Base {
   number: string; date: string; customerId?: ID; amount: number; method: string; kind: 'advance' | 'payment';
+  /** For advances: how much has already been credited to invoices (invoiceId = the last one). */
+  applied?: number;
   jobId?: ID; quotationId?: ID; invoiceId?: ID; chequeNo?: string; note?: string;
 }
 export interface DeliveryLine { id: ID; description: string; qty: number; unit: string }

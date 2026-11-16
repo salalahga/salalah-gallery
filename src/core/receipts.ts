@@ -17,6 +17,7 @@ export function issueReceipt(r: Omit<Receipt, 'id' | 'createdAt' | 'number'> & {
   store.upsert('txns', {
     date: rec.date, kind: 'income', category: r.kind === 'advance' ? 'Advance' : 'Job Payment', amount: Number(r.amount), method: r.method,
     description: `${r.kind === 'advance' ? 'Advance' : 'Payment'} ${inv ? inv.number + ' ' : ''}— ${customer?.name || 'Customer'}`, ref: rec.number,
+    jobId: r.jobId || inv?.jobId || db.quotations.find((q) => q.id === r.quotationId)?.jobId,
   });
   return rec;
 }

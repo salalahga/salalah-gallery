@@ -1,4 +1,4 @@
-import type { DB, Invoice, LineItem, Quotation, Settings } from './types';
+import type { DB, Invoice, Job, LineItem, Quotation, Settings } from './types';
 
 export const lineTotal = (l: LineItem) => (Number(l.qty) || 0) * (Number(l.rate) || 0);
 export function docTotals(d: Pick<Quotation | Invoice, 'items' | 'discount' | 'vat'>) {
@@ -79,4 +79,24 @@ export function amountInWords(amount: number, currency: string) {
   const total = Math.round((Number(amount) || 0) * div);
   const a = Math.floor(total / div), b = total % div;
   return `${words(a)} ${major}${b ? ` and ${words(b)} ${minor}` : ''} Only`;
+}
+
+/** Project (job) accounts: contract value incl. additional work, money collected, expenses and profit. */
+export function projectFinance(db: DB, job: Pick<Job, 'id' | 'value' | 'extras' | 'materials'>) {
+  const base = Number(job.value) || 0;
+  const extras = (job.extras || []).reduce((n, e) => n + (Number(e.amount) || 0), 0);
+  const contract = base + extras;
+  const txns = db.txns.filter((t) => t.jobId === job.id);
+  const collected = txns.filter((t) => t.kind === 'income').reduce((n, t) => n + t.amount, 0);
+  const spent = txns.filter((t) => t.kind === 'expense').reduce((n, t) => n + t.amount, 0);
+  const materials = (job.materials || []).reduce((n, m) => n + (Number(m.issued) || 0) * (db.items.find((i) => i.id === m.itemId)?.cost || 0), 0);
+  const expenses = spent + materials;
+  const invoiced = db.invoices.filter((i) => i.jobId === job.id).reduce((n, i) => n + docTotals(i).total, 0);
+  const byCategory: Record<string, number> = {};
+  txns.filter((t) => t.kind === 'expense').forEach((t) => (byCategory[t.category] = (byCategory[t.category] || 0) + t.amount));
+  if (materials) byCategory['Materials from stock'] = (byCategory['Materials from stock'] || 0) + materials;
+  return {
+    base, extras, contract, collected, toCollect: Math.max(0, contract - collected), spent, materials, expenses, invoiced,
+    profit: contract - expenses, cash: collected - expenses, margin: contract ? (contract - expenses) / contract : 0, byCategory,
+  };
 }

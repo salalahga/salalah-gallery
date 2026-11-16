@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react';
 import type { Base, Collection, DB, Settings } from './types';
 import { seed, emptyDB, defaultSettings } from './seed';
 import { api, ApiError } from './api';
+import { docTotals } from './calc';
 import { toast } from '../components/ui';
 
 /**
@@ -216,7 +217,22 @@ export function exportBackup() {
 
 /** Advance receipts for a job/quotation not yet credited to an invoice. Linking them stops double counting. */
 export function takeAdvances(invoiceId: string, jobId?: string, quotationId?: string): number {
-  const open = db.receipts.filter((r) => r.kind === 'advance' && !r.invoiceId && ((jobId && r.jobId === jobId) || (quotationId && r.quotationId === quotationId)));
-  open.forEach((r) => store.upsert('receipts', { ...r, invoiceId }));
-  return open.reduce((n, r) => n + (Number(r.amount) || 0), 0);
+  const inv = db.invoices.find((i) => i.id === invoiceId);
+  let room = inv ? docTotals(inv).total - (Number(inv.paid) || 0) : 0;
+  let used = 0;
+  // credit open advances oldest first, never more than the invoice total; any rest stays open
+  const open = db.receipts.filter((r) => r.kind === 'advance' && advanceOpen(r) > 0.0005 && ((jobId && r.jobId === jobId) || (quotationId && r.quotationId === quotationId)))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  for (const r of open) {
+    if (room <= 0.0005) break;
+    const use = Math.min(advanceOpen(r), room);
+    store.upsert('receipts', { ...r, applied: (Number(r.applied) || 0) + use, invoiceId });
+    room -= use; used += use;
+  }
+  return +used.toFixed(3);
+}
+/** Part of an advance not yet credited to any invoice (older data: a linked invoice means fully used). */
+export function advanceOpen(r: { amount: number; applied?: number; invoiceId?: string }) {
+  if (r.applied === undefined) return r.invoiceId ? 0 : Number(r.amount) || 0;
+  return Math.max(0, (Number(r.amount) || 0) - (Number(r.applied) || 0));
 }
