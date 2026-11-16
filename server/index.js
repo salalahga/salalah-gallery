@@ -138,7 +138,7 @@ app.get('/api/db', auth, wrap(async (req, res) => {
   const now = tick();
   const rows = await db.all('SELECT col, data FROM records WHERE deleted = 0');
   const out = Object.fromEntries(COLLECTIONS.filter((c) => canRead(req.user.role, c)).map((c) => [c, []]));
-  for (const r of rows) if (out[r.col]) out[r.col].push(redact(req.user.role, r.col, JSON.parse(r.data)));
+  for (const r of rows) if (out[r.col]) { const v = redact(req.user.role, r.col, JSON.parse(r.data), req.user.staff_id); if (v) out[r.col].push(v); }
   for (const c of Object.keys(out)) out[c].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   const s = await readSettings();
   res.json({ db: out, settings: s?.value || null, serverTime: now });
@@ -148,7 +148,8 @@ app.get('/api/changes', auth, wrap(async (req, res) => {
   const since = Number(req.query.since) || 0;
   const now = tick();
   const rows = await db.all('SELECT col, id, data, deleted FROM records WHERE updated_at > ? AND updated_at <= ?', [since, now]);
-  const changes = rows.filter((r) => canRead(req.user.role, r.col)).map((r) => ({ col: r.col, id: r.id, deleted: !!Number(r.deleted), data: Number(r.deleted) ? undefined : redact(req.user.role, r.col, JSON.parse(r.data)) }));
+  const changes = rows.filter((r) => canRead(req.user.role, r.col)).map((r) => ({ col: r.col, id: r.id, deleted: !!Number(r.deleted), data: Number(r.deleted) ? undefined : redact(req.user.role, r.col, JSON.parse(r.data), req.user.staff_id) }))
+    .filter((c) => c.deleted || c.data);
   const s = await readSettings();
   res.json({ changes, settings: s && s.updated_at > since ? s.value : undefined, serverTime: now });
 }));

@@ -7,7 +7,7 @@
 import type { ComponentType } from 'react';
 import {
   LayoutDashboard, Hammer, ListChecks, Users, CalendarCheck, Wallet, Contact, FileText, Receipt, Landmark, Boxes, ShoppingCart,
-  Share2, Globe, Settings as Cog, Puzzle, Zap, Truck, Ruler, FileCheck2, Wrench, BarChart3, Palette, type LucideIcon,
+  Share2, Globe, Settings as Cog, Puzzle, Zap, Truck, Ruler, FileCheck2, Wrench, BarChart3, Palette, MessageSquareText, type LucideIcon,
 } from 'lucide-react';
 import Dashboard from './Dashboard';
 import Jobs from './Jobs';
@@ -32,6 +32,7 @@ import Automations from './Automations';
 import Services from './Services';
 import Reports from './Reports';
 import Catalog from './Catalog';
+import ExpenseChat from './ExpenseChat';
 
 import type { Role } from '../core/session';
 
@@ -42,6 +43,7 @@ const OFFICE: Role[] = ['admin', 'manager'];
 export const modules: ModuleDef[] = [
   { id: 'dashboard', label: 'Dashboard', group: 'Workshop', icon: LayoutDashboard, component: Dashboard, roles: OFFICE, desc: 'Overview of everything' },
   { id: 'jobs', label: 'Projects', group: 'Workshop', icon: Hammer, component: Jobs, desc: 'Every work as a project: value, collections, expenses, profit' },
+  { id: 'expchat', label: 'Expense chat', group: 'Workshop', icon: MessageSquareText, component: ExpenseChat, desc: 'Send bill photos to a project — they become its expenses' },
   { id: 'tasks', label: 'Tasks', group: 'Workshop', icon: ListChecks, component: Tasks, desc: 'Assign work to staff' },
   { id: 'measurements', label: 'Site measurements', group: 'Workshop', icon: Ruler, component: Measurements, desc: 'Measure on site with photos & GPS, then quote' },
   { id: 'services', label: 'Service & warranty', group: 'Workshop', icon: Wrench, component: Services, desc: 'After-sales complaints, repair visits and warranty' },

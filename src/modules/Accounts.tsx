@@ -9,6 +9,7 @@ import { postDueRecurring, dueMonths } from '../core/recurring';
 import { Modal, Field, PageHeader, Badge, Empty, Tabs, SearchBox, Stat, BarChart, toast, confirmDelete } from '../components/ui';
 import { useT } from '../core/i18n';
 import { useCanWrite } from '../core/session';
+import { BillThumbs, BillPhotosEdit } from '../components/BillPhotos';
 
 const METHODS = ['Cash', 'Bank', 'Card', 'Cheque', 'Online'];
 const ACC: Record<MoneyAccount, string> = { cash: 'Cash box', bank: 'Bank' };
@@ -89,7 +90,7 @@ export default function Accounts() {
         {list.length ? <div className="table-wrap"><table>
           <thead><tr><th>Date</th><th>Description</th><th>Category</th><th>Project</th><th>Paid by</th><th className="num">Amount</th><th /></tr></thead>
           <tbody>{list.map((x) => <tr key={x.id} className={can ? 'click' : ''} onClick={() => can && setEdit({ ...x })}>
-            <td>{fmtDate(x.date)}</td><td><b>{x.description}</b>{x.ref && <div className="muted">{x.ref}</div>}</td>
+            <td>{fmtDate(x.date)}</td><td><b>{x.description}</b><BillThumbs photos={x.photos} />{x.ref && <div className="muted">{x.ref}</div>}</td>
             <td><Badge tone={x.kind === 'income' ? 'green' : x.kind === 'transfer' ? 'blue' : 'gray'}>{x.category}</Badge></td>
             <td>{x.jobId ? <span className="muted">{db.jobs.find((j) => j.id === x.jobId)?.code || '—'}</span> : '—'}</td>
             <td>{x.kind === 'transfer' ? `${ACC[x.account || 'cash']} → ${ACC[x.toAccount || 'bank']}` : <>{x.method}<div className="muted">{ACC[accountOf(x)]}</div></>}</td>
@@ -115,6 +116,7 @@ export default function Accounts() {
           <Field label="Cash box or bank"><select value={accountOf(edit as Txn)} onChange={(e) => setEdit({ ...edit, account: e.target.value as MoneyAccount })}><option value="cash">Cash box</option><option value="bank">Bank</option></select></Field>
           <Field label="Project (optional)"><select value={edit.jobId || ''} onChange={(e) => setEdit({ ...edit, jobId: e.target.value || undefined })}><option value="">— General / overhead —</option>{db.jobs.map((j) => <option key={j.id} value={j.id}>{j.code} · {j.title}</option>)}</select></Field>
           <Field label="Reference / bill no."><input value={edit.ref || ''} onChange={(e) => setEdit({ ...edit, ref: e.target.value })} /></Field>
+          <Field label="Bill / receipt pictures" span={3}><BillPhotosEdit photos={edit.photos} onChange={(photos) => setEdit({ ...edit, photos })} /></Field>
         </div>}
       </Modal>}
       {rec && <RecurringModal onClose={() => setRec(false)} />}

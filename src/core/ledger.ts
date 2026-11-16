@@ -86,6 +86,7 @@ export function deleteAdvance(a: Advance): string | null {
 /** If an Accounts entry was posted by a document, say where it must be corrected instead. */
 export function txnSource(t: Txn): string | null {
   const d = db();
+  if (t.chatId && d.expenseChat.some((m) => m.id === t.chatId && m.txnId === t.id)) return 'This expense came from the Expense chat. Open the project chat and press Undo on that bill.';
   if (t.ref) {
     const r = d.receipts.find((x) => x.number === t.ref && !x.voided);
     if (r) return `This entry comes from receipt ${r.number}. To cancel it, void the receipt in Receipts & Delivery — the invoice is corrected with it.`;

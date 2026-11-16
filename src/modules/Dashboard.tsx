@@ -40,6 +40,8 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {db.expenseChat.some((m) => m.status === 'pending') && <div className="alert mb" style={{ cursor: 'pointer' }} onClick={() => go('expchat')}>
+        🧾 {db.expenseChat.filter((m) => m.status === 'pending').length} bill photo(s) from staff waiting for approval — open Expense chat</div>}
       {db.selections.some((x) => x.status === 'submitted' && !x.quotationId) && <div className="alert mb" style={{ cursor: 'pointer' }} onClick={() => go('catalog', { selections: '1' })}>
         🎨 {db.selections.filter((x) => x.status === 'submitted' && !x.quotationId).map((x) => `${x.customerName || L.customer(x.customerId)?.name || 'A customer'} chose materials for “${x.title}”`).join(' · ')} — open to make a quotation</div>}
       <div className="grid g4 mb">

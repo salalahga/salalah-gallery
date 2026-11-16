@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Plus, Trash2, HandCoins, TrendingUp, TrendingDown, Scale, Wallet, Printer } from 'lucide-react';
+import { Plus, Trash2, HandCoins, TrendingUp, TrendingDown, Scale, Wallet, Printer, MessageSquareText } from 'lucide-react';
+import { BillThumbs } from './BillPhotos';
+import { txnSource } from '../core/ledger';
 import { store, useDB, today, uid } from '../core/store';
 import { go } from '../core/router';
 import type { Job, Txn } from '../core/types';
@@ -48,6 +50,7 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
       </div>
       <div className="flex between wrap" style={{ marginBottom: 6 }}><span className="muted">Collected {Math.round(pct)}% of project value</span>
         <span className="flex"><button type="button" className="btn sm" onClick={() => { const open = db.invoices.find((i) => i.jobId === job.id && invoiceBalance(i) > 0.0005); go('documents', open ? { receipt: 'new', invoice: open.id } : { receipt: 'new', job: job.id }); }}><HandCoins size={14} />Receive payment</button>
+          <button type="button" className="btn sm" onClick={() => go('expchat', { job: job.id })}><MessageSquareText size={14} />Expense chat{db.expenseChat.some((m) => m.jobId === job.id && m.status === 'pending') ? ` (${db.expenseChat.filter((m) => m.jobId === job.id && m.status === 'pending').length} to approve)` : ''}</button>
           <button type="button" className="btn sm" onClick={() => setStmt(true)}><Printer size={14} />Project statement</button></span></div>
       <Progress value={pct} color="var(--green)" />
 
@@ -85,8 +88,8 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
         {(expenses.length > 0 || f.materials > 0 || f.labour > 0) ? <div className="table-wrap" style={{ margin: '10px 0 0' }}><table>
           <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Paid by</th><th className="num">Amount</th><th /></tr></thead>
           <tbody>
-            {expenses.map((t) => <tr key={t.id}><td>{fmtDate(t.date)}</td><td><Badge>{t.category}</Badge></td><td>{t.description}</td><td>{t.method}</td><td className="num neg">{money(t.amount, s)}</td>
-              <td><button type="button" className="icon-btn" onClick={() => confirmDelete('this expense') && store.remove('txns', t.id)}><Trash2 size={14} /></button></td></tr>)}
+            {expenses.map((t) => <tr key={t.id}><td>{fmtDate(t.date)}</td><td><Badge>{t.category}</Badge></td><td>{t.description}<BillThumbs photos={t.photos} /></td><td>{t.method}</td><td className="num neg">{money(t.amount, s)}</td>
+              <td><button type="button" className="icon-btn" onClick={() => { const src = txnSource(t); if (src) return toast(src); if (confirmDelete('this expense')) store.remove('txns', t.id); }}><Trash2 size={14} /></button></td></tr>)}
             {f.labour > 0 && <tr><td>—</td><td><Badge>Staff time</Badge></td><td>{f.labourHours} h logged on tasks ({db.tasks.filter((t) => t.jobId === job.id && Number(t.spent) > 0).map((t) => `${db.staff.find((x) => x.id === t.staffId)?.name || '?'} ${t.spent}h`).join(', ')})</td><td>Payroll</td><td className="num neg">{money(f.labour, s)}</td><td /></tr>}
             {f.materials > 0 && <tr><td>—</td><td><Badge>Materials from stock</Badge></td><td>{job.materials.filter((m) => m.issued).map((m) => `${m.issued} × ${db.items.find((i) => i.id === m.itemId)?.name || 'item'}`).join(', ')}</td><td>Stock</td><td className="num neg">{money(f.materials, s)}</td><td /></tr>}
           </tbody></table></div> : <p className="muted">No expenses yet. Every expense you add here also appears in Accounts.</p>}

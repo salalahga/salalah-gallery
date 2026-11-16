@@ -72,6 +72,8 @@ export interface Txn extends Base {
   date: string; kind: 'income' | 'expense' | 'transfer'; category: string; amount: number; method: string; description: string; ref?: string; jobId?: ID;
   /** Cash box or bank; defaults from the method (Cash → cash, everything else → bank). For a transfer: the account money leaves. */
   account?: MoneyAccount; toAccount?: MoneyAccount; recurringId?: ID;
+  /** Pictures of the bill / receipt. */
+  photos?: string[]; chatId?: ID;
 }
 
 export interface Item extends Base {
@@ -111,7 +113,7 @@ export interface DB {
   quotations: Quotation[]; invoices: Invoice[]; txns: Txn[]; items: Item[]; sales: Sale[]; socialAccounts: SocialAccount[]; socialPosts: SocialPost[];
   suppliers: Supplier[]; purchases: Purchase[]; receipts: Receipt[]; deliveries: Delivery[]; measurements: Measurement[];
   cheques: Cheque[]; creditNotes: CreditNote[]; services: ServiceCall[]; recurring: Recurring[];
-  brands: Brand[]; catalog: CatalogItem[]; selections: Selection[];
+  brands: Brand[]; catalog: CatalogItem[]; selections: Selection[]; expenseChat: ExpenseMsg[];
   settings: Settings;
 }
 export type Collection = Exclude<keyof DB, 'settings'>;
@@ -169,4 +171,14 @@ export interface Selection extends Base {
   token: string; title: string; message?: string; customerId?: ID; jobId?: ID; itemIds: ID[]; maxPicks?: number;
   status: 'sent' | 'viewed' | 'submitted' | 'closed'; picks: SelectionPick[]; viewedAt?: string; submittedAt?: string;
   customerName?: string; customerPhone?: string; customerNote?: string; quotationId?: ID; showPrices?: boolean;
+}
+
+/**
+ * One message in a project's expense chat: bill photos + text + amount. From the office it is posted
+ * to Accounts straight away; from staff it is a claim the office approves.
+ */
+export interface ExpenseMsg extends Base {
+  jobId?: ID; text: string; photos: string[]; amount?: number; category?: string; method?: string; date: string;
+  byUserId?: string; byName?: string; byStaffId?: ID;
+  status: 'note' | 'pending' | 'posted' | 'rejected'; txnId?: ID; reply?: string;
 }
