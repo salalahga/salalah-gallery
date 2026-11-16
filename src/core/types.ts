@@ -181,4 +181,6 @@ export interface ExpenseMsg extends Base {
   jobId?: ID; text: string; photos: string[]; amount?: number; category?: string; method?: string; date: string;
   byUserId?: string; byName?: string; byStaffId?: ID;
   status: 'note' | 'pending' | 'posted' | 'rejected'; txnId?: ID; reply?: string;
+  /** Filled in by reading the bill photo (OCR): check these. */
+  ocr?: { amount?: number; date?: string; vendor?: string; billNo?: string; vat?: number; confidence?: number };
 }

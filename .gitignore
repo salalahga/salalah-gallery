@@ -26,3 +26,4 @@ dist-ssr
 # local database (server/db.js)
 data/
 .env
+public/ocr/

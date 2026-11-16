@@ -116,7 +116,16 @@ export default function Accounts() {
           <Field label="Cash box or bank"><select value={accountOf(edit as Txn)} onChange={(e) => setEdit({ ...edit, account: e.target.value as MoneyAccount })}><option value="cash">Cash box</option><option value="bank">Bank</option></select></Field>
           <Field label="Project (optional)"><select value={edit.jobId || ''} onChange={(e) => setEdit({ ...edit, jobId: e.target.value || undefined })}><option value="">— General / overhead —</option>{db.jobs.map((j) => <option key={j.id} value={j.id}>{j.code} · {j.title}</option>)}</select></Field>
           <Field label="Reference / bill no."><input value={edit.ref || ''} onChange={(e) => setEdit({ ...edit, ref: e.target.value })} /></Field>
-          <Field label="Bill / receipt pictures" span={3}><BillPhotosEdit photos={edit.photos} onChange={(photos) => setEdit({ ...edit, photos })} /></Field>
+          <Field label="Bill / receipt pictures" span={3}><BillPhotosEdit photos={edit.photos} onChange={(photos) => setEdit((e) => (e ? { ...e, photos } : e))} onRead={(b) => setEdit((e) => {
+            if (!e) return e;
+            const n = { ...e };
+            if (!(Number(n.amount) > 0) && b.amount) n.amount = b.amount;
+            if (b.date) n.date = b.date;
+            if (!n.description && (b.vendor || b.billNo)) n.description = `${b.vendor || 'Bill'}${b.billNo ? ` — bill ${b.billNo}` : ''}`;
+            if (!n.ref && b.billNo) n.ref = b.billNo;
+            toast(b.amount ? `Read from the bill: ${money(b.amount, s)}${b.date ? ' · ' + fmtDate(b.date) : ''} — check and save` : 'Could not find the total on the bill');
+            return n;
+          })} /></Field>
         </div>}
       </Modal>}
       {rec && <RecurringModal onClose={() => setRec(false)} />}
