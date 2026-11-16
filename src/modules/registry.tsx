@@ -7,7 +7,7 @@
 import type { ComponentType } from 'react';
 import {
   LayoutDashboard, Hammer, ListChecks, Users, CalendarCheck, Wallet, Contact, FileText, Receipt, Landmark, Boxes, ShoppingCart,
-  Share2, Globe, Settings as Cog, Puzzle, Zap, Truck, Ruler, FileCheck2, type LucideIcon,
+  Share2, Globe, Settings as Cog, Puzzle, Zap, Truck, Ruler, FileCheck2, Wrench, BarChart3, Palette, MessageSquareText, type LucideIcon,
 } from 'lucide-react';
 import Dashboard from './Dashboard';
 import Jobs from './Jobs';
@@ -29,6 +29,10 @@ import Purchases from './Purchases';
 import Measurements from './Measurements';
 import Documents from './Documents';
 import Automations from './Automations';
+import Services from './Services';
+import Reports from './Reports';
+import Catalog from './Catalog';
+import ExpenseChat from './ExpenseChat';
 
 import type { Role } from '../core/session';
 
@@ -39,8 +43,11 @@ const OFFICE: Role[] = ['admin', 'manager'];
 export const modules: ModuleDef[] = [
   { id: 'dashboard', label: 'Dashboard', group: 'Workshop', icon: LayoutDashboard, component: Dashboard, roles: OFFICE, desc: 'Overview of everything' },
   { id: 'jobs', label: 'Projects', group: 'Workshop', icon: Hammer, component: Jobs, desc: 'Every work as a project: value, collections, expenses, profit' },
+  { id: 'expchat', label: 'Expense chat', group: 'Workshop', icon: MessageSquareText, component: ExpenseChat, desc: 'Send bill photos to a project — they become its expenses' },
   { id: 'tasks', label: 'Tasks', group: 'Workshop', icon: ListChecks, component: Tasks, desc: 'Assign work to staff' },
   { id: 'measurements', label: 'Site measurements', group: 'Workshop', icon: Ruler, component: Measurements, desc: 'Measure on site with photos & GPS, then quote' },
+  { id: 'services', label: 'Service & warranty', group: 'Workshop', icon: Wrench, component: Services, desc: 'After-sales complaints, repair visits and warranty' },
+  { id: 'catalog', label: 'Material catalogue', group: 'Workshop', icon: Palette, component: Catalog, desc: 'Laminates, boards, hardware & colours by company — send customers a link to choose' },
   { id: 'purchases', label: 'Purchases', group: 'Workshop', icon: Truck, component: Purchases, roles: OFFICE, desc: 'Suppliers, purchase orders, goods received' },
   { id: 'inventory', label: 'Inventory', group: 'Workshop', icon: Boxes, component: Inventory, desc: 'Boards, hardware & products stock' },
   { id: 'staff', label: 'Staff', group: 'Team', icon: Users, component: StaffPage, roles: OFFICE, desc: 'Employees, skills and documents' },
@@ -49,9 +56,10 @@ export const modules: ModuleDef[] = [
   { id: 'customers', label: 'Customers', group: 'Business', icon: Contact, component: Customers, roles: OFFICE, desc: 'Clients and contacts' },
   { id: 'quotations', label: 'Quotations', group: 'Business', icon: FileText, component: Quotations, roles: OFFICE, desc: 'Create & send quotations' },
   { id: 'invoices', label: 'Invoices', group: 'Business', icon: Receipt, component: Invoices, roles: OFFICE, desc: 'Billing and payments' },
-  { id: 'documents', label: 'Receipts & Delivery', group: 'Business', icon: FileCheck2, component: Documents, roles: OFFICE, desc: 'Advance/payment receipts and delivery notes' },
+  { id: 'documents', label: 'Receipts & Delivery', group: 'Business', icon: FileCheck2, component: Documents, roles: OFFICE, desc: 'Receipts, cheques (PDC), credit notes and delivery notes' },
   { id: 'sales', label: 'Sales', group: 'Business', icon: ShoppingCart, component: Sales, roles: OFFICE, desc: 'Product sales / POS' },
-  { id: 'accounts', label: 'Accounts', group: 'Money', icon: Landmark, component: Accounts, roles: OFFICE, desc: 'Income, expenses, profit & loss' },
+  { id: 'accounts', label: 'Accounts', group: 'Money', icon: Landmark, component: Accounts, roles: OFFICE, desc: 'Income, expenses, cash & bank, recurring bills' },
+  { id: 'reports', label: 'Reports', group: 'Money', icon: BarChart3, component: Reports, roles: OFFICE, desc: 'VAT return, customer & supplier balances, gratuity & leave' },
   { id: 'social', label: 'Social Media', group: 'Growth', icon: Share2, component: Social, roles: OFFICE, desc: 'Plan & share posts' },
   { id: 'website', label: 'Website', group: 'Growth', icon: Globe, component: Website, roles: OWNER, desc: 'Build your business website' },
   { id: 'plugins', label: 'Plugins', group: 'System', icon: Puzzle, component: Plugins, roles: OWNER, desc: 'Telegram, email, webhooks, calendar, QR, export, app install' },

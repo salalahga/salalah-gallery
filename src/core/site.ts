@@ -1,6 +1,9 @@
 import type { DB } from './types';
 import { money } from './calc';
 
+/** Photos kept on this server (/api/files/…) need the full address on the published website. */
+const abs = (u: string) => (u.startsWith('/') && typeof window !== 'undefined' ? window.location.origin + u : u);
+
 const esc = (s = '') => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
 export const THEMES: Record<string, { name: string; bg: string; ink: string; accent: string; dark: string; soft: string }> = {
   walnut: { name: 'Walnut', bg: '#faf6f0', ink: '#2a1f17', accent: '#a0652f', dark: '#2b1d13', soft: '#f1e6d8' },
@@ -26,7 +29,7 @@ header .wrap{display:flex;align-items:center;justify-content:space-between;heigh
 nav a{margin-left:20px;text-decoration:none;font-size:15px;opacity:.8;white-space:nowrap}.logo,.btn{white-space:nowrap}nav a:hover{opacity:1}
 .btn{display:inline-block;background:${th.accent};color:#fff;padding:13px 24px;border-radius:999px;text-decoration:none;font-weight:600}
 .btn.alt{background:transparent;border:2px solid currentColor;color:inherit}
-.hero{background:linear-gradient(120deg,${th.dark}e6,${th.dark}99),url('${esc(w.gallery[0] || '')}') center/cover;color:#fff;padding:120px 0 110px}
+.hero{background:linear-gradient(120deg,${th.dark}e6,${th.dark}99),url('${esc(abs(w.gallery[0] || ''))}') center/cover;color:#fff;padding:120px 0 110px}
 .hero h1{font-family:Fraunces,serif;font-size:clamp(34px,6vw,62px);line-height:1.1;margin:0 0 16px;max-width:760px}
 .hero p{font-size:19px;max-width:620px;opacity:.9;margin:0 0 28px}.hero .cta{display:flex;gap:12px;flex-wrap:wrap}
 section{padding:80px 0}h2{font-family:Fraunces,serif;font-size:clamp(28px,4vw,40px);margin:0 0 12px}.lead{opacity:.75;max-width:640px;margin:0 0 36px}
@@ -45,9 +48,9 @@ footer{background:${th.dark};color:#ffffff99;padding:24px 0;font-size:14px;borde
 <div class="hero"><div class="wrap"><h1>${esc(s.tagline)}</h1><p>${esc(w.hero)}</p><div class="cta"><a class="btn" href="${wa}">WhatsApp us</a><a class="btn alt" href="tel:${esc(s.phone)}">Call ${esc(s.phone)}</a></div></div></div>
 <section id="services"><div class="wrap"><h2>What we do</h2><p class="lead">From precise CNC cutting to full interior fit-outs — one workshop, one team, one point of contact.</p>
 <div class="grid">${s.workTypes.map((t) => `<div class="svc" style="--c:${t.color}"><h3>${esc(t.name)}</h3><p style="opacity:.75;margin:0">${esc(t.fields.slice(0, 3).join(' · '))}</p></div>`).join('')}</div></div></section>
-<section id="work" style="background:${th.soft}"><div class="wrap"><h2>Recent work</h2><p class="lead">A few projects from our workshop.</p><div class="gal">${w.gallery.filter(Boolean).map((g) => `<img src="${esc(g)}" alt="Project" loading="lazy">`).join('')}</div></div></section>
-${products.length ? `<section id="shop"><div class="wrap"><h2>Ready-made products</h2><p class="lead">Available from our showroom. Message us to order.</p><div class="grid">${products.map((p) => `<div class="prod">${p.image ? `<img src="${esc(p.image)}" alt="${esc(p.name)}" loading="lazy">` : ''}<div><b>${esc(p.name)}</b><span style="opacity:.7;font-size:14px">${esc(p.description || '')}</span><div class="price">${money(p.price, s)}</div><a class="btn" style="margin-top:10px;padding:9px 18px;font-size:14px" href="https://wa.me/${s.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent('I want to order: ' + p.name)}">Order</a></div></div>`).join('')}</div></div></section>` : ''}
-<section id="about"><div class="wrap about"><div><h2>About us</h2><p>${esc(w.about)}</p><div class="stats"><div><b>${db.jobs.filter((j) => j.status === 'completed').length + 100}+</b>Projects</div><div><b>${db.staff.filter((x) => x.active).length}</b>Craftsmen</div><div><b>${s.workTypes.length}</b>Services</div></div></div>${w.gallery[1] ? `<img src="${esc(w.gallery[1])}" alt="" style="width:100%;border-radius:20px">` : ''}</div></section>
+<section id="work" style="background:${th.soft}"><div class="wrap"><h2>Recent work</h2><p class="lead">A few projects from our workshop.</p><div class="gal">${w.gallery.filter(Boolean).map((g) => `<img src="${esc(abs(g))}" alt="Project" loading="lazy">`).join('')}</div></div></section>
+${products.length ? `<section id="shop"><div class="wrap"><h2>Ready-made products</h2><p class="lead">Available from our showroom. Message us to order.</p><div class="grid">${products.map((p) => `<div class="prod">${p.image ? `<img src="${esc(abs(p.image))}" alt="${esc(p.name)}" loading="lazy">` : ''}<div><b>${esc(p.name)}</b><span style="opacity:.7;font-size:14px">${esc(p.description || '')}</span><div class="price">${money(p.price, s)}</div><a class="btn" style="margin-top:10px;padding:9px 18px;font-size:14px" href="https://wa.me/${s.whatsapp.replace(/\D/g, '')}?text=${encodeURIComponent('I want to order: ' + p.name)}">Order</a></div></div>`).join('')}</div></div></section>` : ''}
+<section id="about"><div class="wrap about"><div><h2>About us</h2><p>${esc(w.about)}</p><div class="stats"><div><b>${db.jobs.filter((j) => j.status === 'completed').length + 100}+</b>Projects</div><div><b>${db.staff.filter((x) => x.active).length}</b>Craftsmen</div><div><b>${s.workTypes.length}</b>Services</div></div></div>${w.gallery[1] ? `<img src="${esc(abs(w.gallery[1]))}" alt="" style="width:100%;border-radius:20px">` : ''}</div></section>
 <section id="contact" class="contact"><div class="wrap"><h2>Visit or contact us</h2><p class="lead" style="color:#fff">Free site measurement and quotation.</p><div class="grid">
 <div><b>Phone</b><br><a href="tel:${esc(s.phone)}">${esc(s.phone)}</a></div><div><b>Email</b><br><a href="mailto:${esc(s.email)}">${esc(s.email)}</a></div><div><b>Workshop</b><br>${esc(s.address)}, ${esc(s.city)}, ${esc(s.country)}</div>
 ${socials.length ? `<div><b>Follow us</b><br>${socials.map((a) => `<a href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.platform)}</a>`).join(' · ')}</div>` : ''}</div>

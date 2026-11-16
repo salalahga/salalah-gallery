@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { Minus, Plus, Trash2, ShoppingCart, Printer, Package, TrendingUp } from 'lucide-react';
+import { Minus, Plus, Trash2, ShoppingCart, Printer, Package, TrendingUp, Undo2 } from 'lucide-react';
+import { returnSale } from '../core/ledger';
 import { store, useDB, nextNumber, today } from '../core/store';
 import type { Sale } from '../core/types';
-import { money, fmtDate } from '../core/calc';
+import { money, fmtDate, saleTotals, returnAmount } from '../core/calc';
 import { lookup } from '../core/helpers';
 import { PageHeader, Empty, Tabs, SearchBox, Field, Modal, Stat, toast } from '../components/ui';
 import { useT } from '../core/i18n';
@@ -16,16 +17,31 @@ export default function Sales() {
   const [cart, setCart] = useState<Line[]>([]); const [customerId, setCustomerId] = useState(''); const [discount, setDiscount] = useState(0); const [method, setMethod] = useState('Cash');
   const [receipt, setReceipt] = useState<Sale | null>(null);
   const products = db.items.filter((i) => (i.kind === 'product' || q) && (i.name + i.category).toLowerCase().includes(q.toLowerCase()));
-  const add = (id: string) => { const it = L.item(id)!; setCart((c) => c.some((l) => l.itemId === id) ? c.map((l) => (l.itemId === id ? { ...l, qty: l.qty + 1 } : l)) : [...c, { itemId: id, name: it.name, qty: 1, price: it.price }]); };
+  const [ret, setRet] = useState<{ sale: Sale; qty: Record<string, number>; method: string; reason: string } | null>(null);
+  const add = (id: string) => {
+    const it = L.item(id)!; const inCart = cart.find((l) => l.itemId === id)?.qty || 0;
+    if (inCart + 1 > it.qty) return toast(`Only ${it.qty} ${it.unit} of ${it.name} in stock`);
+    setCart((c) => c.some((l) => l.itemId === id) ? c.map((l) => (l.itemId === id ? { ...l, qty: l.qty + 1 } : l)) : [...c, { itemId: id, name: it.name, qty: 1, price: it.price }]);
+  };
   const sub = cart.reduce((n, l) => n + l.qty * l.price, 0); const vat = Math.max(0, sub - discount) * (s.vatRate / 100); const total = Math.max(0, sub - discount) + vat;
   const checkout = () => {
     if (!cart.length) return;
+    const short = cart.find((l) => l.qty > (L.item(l.itemId)?.qty ?? 0));
+    if (short) return toast(`Only ${L.item(short.itemId)?.qty ?? 0} of ${short.name} in stock`);
+    if (discount < 0 || discount > sub) return toast('Discount must be between 0 and the subtotal');
     const sale = store.upsert('sales', { number: nextNumber('SL', db.sales.map((x) => x.number)), date: today(), customerId: customerId || undefined, lines: cart, discount, vat: s.vatRate, method }) as Sale;
-    cart.forEach((l) => { const it = L.item(l.itemId); if (it) store.upsert('items', { ...it, qty: Math.max(0, it.qty - l.qty) }); });
+    cart.forEach((l) => { const it = L.item(l.itemId); if (it) store.upsert('items', { ...it, qty: it.qty - l.qty }); });
     store.upsert('txns', { date: today(), kind: 'income', category: 'Product Sale', amount: +total.toFixed(3), method, description: `Sale ${sale.number}${customerId ? ' — ' + L.customer(customerId)?.name : ''}`, ref: sale.number });
     setCart([]); setDiscount(0); setReceipt(sale); toast('Sale completed');
   };
-  const saleTotal = (x: Sale) => { const sb = x.lines.reduce((n, l) => n + l.qty * l.price, 0); return Math.max(0, sb - x.discount) * (1 + x.vat / 100); };
+  const saleTotal = (x: Sale) => saleTotals(x).net;
+  const returned = (x: Sale, id: string) => (x.returns || []).reduce((n, r) => n + (r.lines.find((l) => l.itemId === id)?.qty || 0), 0);
+  const doReturn = () => {
+    if (!ret) return;
+    const err = returnSale(ret.sale, Object.entries(ret.qty).map(([itemId, qty]) => ({ itemId, qty })), ret.method, ret.reason);
+    if (err) return toast(err);
+    setRet(null); toast('Return recorded — stock added back and refund posted in Accounts');
+  };
   const monthSales = db.sales.filter((x) => x.date.startsWith(today().slice(0, 7)));
 
   return (
@@ -64,8 +80,18 @@ export default function Sales() {
           <Stat label="All-time sales" value={money(db.sales.reduce((n, x) => n + saleTotal(x), 0), s)} icon={<ShoppingCart size={20} />} tone="wood" />
         </div>
         <div className="card">{db.sales.length ? <div className="table-wrap"><table><thead><tr><th>Bill</th><th>Date</th><th>Customer</th><th>Items</th><th>Method</th><th className="num">Total</th><th /></tr></thead>
-          <tbody>{db.sales.map((x) => <tr key={x.id}><td><b>{x.number}</b></td><td>{fmtDate(x.date)}</td><td>{L.customer(x.customerId)?.name || 'Walk-in'}</td><td className="muted">{x.lines.map((l) => `${l.qty}× ${l.name}`).join(', ')}</td><td>{x.method}</td><td className="num"><b>{money(saleTotal(x), s)}</b></td><td><button className="icon-btn" onClick={() => setReceipt(x)}><Printer size={15} /></button></td></tr>)}</tbody></table></div> : <Empty title="No sales yet" />}</div>
+          <tbody>{db.sales.map((x) => <tr key={x.id}><td><b>{x.number}</b></td><td>{fmtDate(x.date)}</td><td>{L.customer(x.customerId)?.name || 'Walk-in'}</td><td className="muted">{x.lines.map((l) => `${l.qty}× ${l.name}`).join(', ')}</td><td>{x.method}</td><td className="num"><b>{money(saleTotal(x), s)}</b>{(x.returns || []).length > 0 && <div className="muted">returned {money(saleTotals(x).returned, s)}</div>}</td><td><div className="row-actions"><button className="icon-btn" title="Receipt" onClick={() => setReceipt(x)}><Printer size={15} /></button><button className="icon-btn" title="Return / refund" onClick={() => setRet({ sale: x, qty: {}, method: x.method, reason: '' })}><Undo2 size={15} /></button></div></td></tr>)}</tbody></table></div> : <Empty title="No sales yet" />}</div>
       </>}
+      {ret && <Modal open title={`Return on ${ret.sale.number}`} onClose={() => setRet(null)} footer={<><button className="btn" onClick={() => setRet(null)}>Cancel</button><button className="btn primary" onClick={doReturn}><Undo2 size={15} />Record return</button></>}>
+        <ul className="list">{ret.sale.lines.map((l) => { const left = l.qty - returned(ret.sale, l.itemId); return (
+          <li key={l.itemId}><div className="grow"><div className="title">{l.name}</div><div className="muted">sold {l.qty}{left < l.qty ? ` · ${l.qty - left} already returned` : ''}</div></div>
+            <input type="number" min={0} max={left} style={{ width: 90 }} disabled={!left} value={ret.qty[l.itemId] || ''} placeholder="0" onChange={(e) => setRet({ ...ret, qty: { ...ret.qty, [l.itemId]: Math.max(0, Math.min(left, +e.target.value)) } })} /></li>); })}</ul>
+        <div className="form two" style={{ marginTop: 10 }}>
+          <Field label="Refund by"><select value={ret.method} onChange={(e) => setRet({ ...ret, method: e.target.value })}>{['Cash', 'Card', 'Bank', 'Online'].map((m) => <option key={m}>{m}</option>)}</select></Field>
+          <Field label="Reason"><input value={ret.reason} onChange={(e) => setRet({ ...ret, reason: e.target.value })} placeholder="e.g. damaged" /></Field>
+        </div>
+        <p className="muted">Refund: <b>{money(returnAmount(ret.sale, Object.entries(ret.qty).map(([itemId, qty]) => ({ itemId, qty }))), s)}</b> (incl. VAT, after the bill discount)</p>
+      </Modal>}
       {receipt && <Modal open title={`Receipt ${receipt.number}`} onClose={() => setReceipt(null)} footer={<><button className="btn" onClick={() => setReceipt(null)}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print</button></>}>
         <div className="print-area"><div className="doc" style={{ maxWidth: 360, margin: '0 auto', fontFamily: 'monospace' }}>
           <div style={{ textAlign: 'center' }}><b style={{ fontSize: 16 }}>{s.businessName}</b><div>{s.city} · {s.phone}</div>{s.vatNumber && <div>VATIN {s.vatNumber}</div>}<div>{receipt.number} · {fmtDate(receipt.date)}</div></div><hr />

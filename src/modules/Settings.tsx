@@ -5,12 +5,13 @@ import type { WorkType, DB } from '../core/types';
 import { PageHeader, Field, Tabs, toast } from '../components/ui';
 import { useT } from '../core/i18n';
 import Users from './Users';
+import { AutoBackup, ActivityLog } from './SettingsExtra';
 
 
 
 export default function SettingsPage() {
   const db = useDB(); const s = db.settings; const t = useT();
-  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'users' | 'data'>('business');
+  const [tab, setTab] = useState<'business' | 'work' | 'lists' | 'users' | 'data' | 'activity'>('business');
   const fileRef = useRef<HTMLInputElement>(null);
   const set = store.setSettings;
   const setWT = (i: number, p: Partial<WorkType>) => set({ workTypes: s.workTypes.map((w, k) => (k === i ? { ...w, ...p } : w)) });
@@ -20,7 +21,7 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader title={t('Settings')} sub="Business profile, work types, lists, integrations and backup." />
-      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'users', label: 'Users & logins' }, { id: 'data', label: 'Backup' }]} /></div>
+      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'business', label: 'Business' }, { id: 'work', label: 'Work types', count: s.workTypes.length }, { id: 'lists', label: 'Lists & payroll' }, { id: 'users', label: 'Users & logins' }, { id: 'data', label: 'Backup' }, { id: 'activity', label: 'Activity log' }]} /></div>
 
       {tab === 'business' && <div className="card"><div className="form">
         <Field label="Business name" span={2}><input value={s.businessName} onChange={(e) => set({ businessName: e.target.value })} /></Field>
@@ -47,6 +48,9 @@ export default function SettingsPage() {
         <Field label="Invoice number prefix (empty = plain numbers like 1213)"><input value={s.invoicePrefix ?? ''} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="e.g. INV" /></Field>
         <Field label="Plain numbering starts at"><input type="number" value={s.invoiceStart ?? 1} onChange={(e) => set({ invoiceStart: +e.target.value })} /></Field>
         <div />
+        <Field label={`Opening cash in hand (${s.currency})`}><input type="number" value={s.openingCash ?? 0} onChange={(e) => set({ openingCash: +e.target.value })} /></Field>
+        <Field label={`Opening bank balance (${s.currency})`}><input type="number" value={s.openingBank ?? 0} onChange={(e) => set({ openingBank: +e.target.value })} /></Field>
+        <Field label="Balances counted from (date)"><input type="date" value={s.openingDate || ''} onChange={(e) => set({ openingDate: e.target.value })} /></Field>
         <Field label="Payment & bank details (printed on invoices)" span={3}><textarea value={s.paymentInfo || ''} onChange={(e) => set({ paymentInfo: e.target.value })} /></Field>
         <Field label="Default quotation terms" span={3}><textarea value={s.quoteTerms} onChange={(e) => set({ quoteTerms: e.target.value })} /></Field>
       </div></div>}
@@ -77,6 +81,9 @@ export default function SettingsPage() {
           <Field label="Working days / month"><input type="number" value={s.workingDaysPerMonth} onChange={(e) => set({ workingDaysPerMonth: +e.target.value })} /></Field>
           <Field label="Work hours / day"><input type="number" value={s.workHoursPerDay} onChange={(e) => set({ workHoursPerDay: +e.target.value })} /></Field>
           <Field label="Overtime multiplier"><input type="number" step={0.05} value={s.overtimeMultiplier} onChange={(e) => set({ overtimeMultiplier: +e.target.value })} /></Field>
+          <Field label="Gratuity — days of basic wage per year"><input type="number" value={s.gratuityDaysPerYear ?? 30} onChange={(e) => set({ gratuityDaysPerYear: +e.target.value })} /></Field>
+          <Field label="Paid annual leave — days per year"><input type="number" value={s.annualLeaveDays ?? 30} onChange={(e) => set({ annualLeaveDays: +e.target.value })} /></Field>
+          <div />
           <p className="span-3 muted">Monthly staff: salary ÷ working days × days present. Daily staff: rate × days. Overtime = hourly rate × multiplier. Unrecovered advances are deducted automatically.</p>
         </div></div>
       </div>}
@@ -85,7 +92,10 @@ export default function SettingsPage() {
 
       {tab === 'users' && <Users />}
 
+      {tab === 'activity' && <ActivityLog />}
+
       {tab === 'data' && <div className="grid g3">
+        <AutoBackup />
         <div className="card"><h3>Backup</h3><p className="muted">{store.mode === 'server' ? 'Data is stored in the online database. A backup file is still a good safety copy.' : 'Data is stored in this browser. Download a backup regularly.'}</p><button className="btn primary" onClick={exportBackup}><Download size={16} />Download backup</button></div>
         <div className="card"><h3>Restore</h3><p className="muted">Load a backup file (replaces current data).</p><input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && restore(e.target.files[0])} /><button className="btn" onClick={() => fileRef.current?.click()}><Upload size={16} />Restore backup</button></div>
         <div className="card"><h3>Start fresh</h3><p className="muted">Remove demo data and start with your own.</p><div className="flex wrap">

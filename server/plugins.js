@@ -46,10 +46,23 @@ export function createPlugins(db) {
     const j = await r.json().catch(() => ({}));
     if (!r.ok || j.ok === false) throw new Error('Telegram: ' + (j.description || r.status));
   }
+  async function telegramFile(buf, filename, caption, chatId) {
+    const c = (await getConfig()).telegram || {};
+    if (!c.enabled || !c.botToken) throw new Error('Telegram plugin is not set up');
+    const to = chatId || c.chatId;
+    if (!to) throw new Error('No Telegram chat ID');
+    const base = process.env.TELEGRAM_API || 'https://api.telegram.org';
+    const form = new FormData();
+    form.append('chat_id', String(to)); if (caption) form.append('caption', caption);
+    form.append('document', new Blob([buf], { type: 'application/gzip' }), filename);
+    const r = await fetch(`${base}/bot${c.botToken}/sendDocument`, { method: 'POST', body: form });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || j.ok === false) throw new Error('Telegram: ' + (j.description || r.status));
+  }
 
   // ---------- Email (SMTP — e.g. free Gmail with an app password) ----------
   let transport; let transportKey = '';
-  async function email({ to, subject, text }) {
+  async function email({ to, subject, text, attachments }) {
     const c = (await getConfig()).email || {};
     if (!c.enabled || !c.host || !c.user || !c.pass) throw new Error('Email plugin is not set up');
     const key = JSON.stringify([c.host, c.port, c.user, c.pass]);
@@ -59,7 +72,7 @@ export function createPlugins(db) {
       transport = nodemailer.createTransport({ host: c.host, port, secure: port === 465, auth: { user: c.user, pass: c.pass } });
       transportKey = key;
     }
-    await transport.sendMail({ from: c.from || c.user, to: to || c.to || c.user, subject, text });
+    await transport.sendMail({ from: c.from || c.user, to: to || c.to || c.user, subject, text, attachments });
   }
 
   // ---------- Webhooks (n8n, Make, Zapier, Pipedream, Google Apps Script…) ----------
@@ -76,5 +89,5 @@ export function createPlugins(db) {
     if (bad.length) throw new Error(bad.map((b) => b.reason.message).join('; '));
   }
 
-  return { getConfig, setConfig, masked, telegram, email, webhook };
+  return { getConfig, setConfig, masked, telegram, telegramFile, email, webhook };
 }

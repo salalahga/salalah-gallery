@@ -25,8 +25,10 @@ let flushing = false;
 export const syncState = { online: true, pending: 0, lastSync: 0 };
 
 function merge(parsed: Partial<DB>, base: DB): DB {
-  // merge so collections/settings added in future versions always exist
-  return { ...base, ...parsed, settings: { ...base.settings, ...(parsed.settings || {}) } } as DB;
+  // collections added in newer versions start empty (never filled with demo records); settings get new defaults
+  const out = { ...base, ...parsed, settings: { ...base.settings, ...(parsed.settings || {}) } } as DB;
+  for (const k of Object.keys(base) as (keyof DB)[]) if (k !== 'settings' && !(k in parsed)) (out as unknown as Record<string, unknown>)[k] = [];
+  return out;
 }
 function loadLocal(): DB {
   try { const raw = localStorage.getItem(LOCAL_KEY); if (raw) return merge(JSON.parse(raw), seed()); } catch { /* ignore */ }
@@ -215,24 +217,32 @@ export function exportBackup() {
   URL.revokeObjectURL(a.href);
 }
 
-/** Advance receipts for a job/quotation not yet credited to an invoice. Linking them stops double counting. */
+/**
+ * Credit open advance receipts of a job/quotation to an invoice (oldest first, never more than the
+ * invoice balance). The invoice's paid amount and its advanceCredits are updated here, so deleting
+ * the invoice later can give the advances back.
+ */
 export function takeAdvances(invoiceId: string, jobId?: string, quotationId?: string): number {
   const inv = db.invoices.find((i) => i.id === invoiceId);
-  let room = inv ? docTotals(inv).total - (Number(inv.paid) || 0) : 0;
-  let used = 0;
+  if (!inv) return 0;
+  let room = docTotals(inv).total - (Number(inv.paid) || 0) - (Number(inv.credited) || 0);
+  let used = 0; const credits = [...(inv.advanceCredits || [])];
   // credit open advances oldest first, never more than the invoice total; any rest stays open
-  const open = db.receipts.filter((r) => r.kind === 'advance' && advanceOpen(r) > 0.0005 && ((jobId && r.jobId === jobId) || (quotationId && r.quotationId === quotationId)))
+  const open = db.receipts.filter((r) => r.kind === 'advance' && !r.voided && advanceOpen(r) > 0.0005 && ((jobId && r.jobId === jobId) || (quotationId && r.quotationId === quotationId)))
     .sort((a, b) => a.date.localeCompare(b.date));
   for (const r of open) {
     if (room <= 0.0005) break;
     const use = Math.min(advanceOpen(r), room);
     store.upsert('receipts', { ...r, applied: (Number(r.applied) || 0) + use, invoiceId });
+    credits.push({ receiptId: r.id, amount: +use.toFixed(3) });
     room -= use; used += use;
   }
+  if (used > 0) store.upsert('invoices', { ...db.invoices.find((i) => i.id === invoiceId)!, paid: +((Number(inv.paid) || 0) + used).toFixed(3), advanceCredits: credits });
   return +used.toFixed(3);
 }
 /** Part of an advance not yet credited to any invoice (older data: a linked invoice means fully used). */
-export function advanceOpen(r: { amount: number; applied?: number; invoiceId?: string }) {
+export function advanceOpen(r: { amount: number; applied?: number; invoiceId?: string; voided?: boolean }) {
+  if (r.voided) return 0;
   if (r.applied === undefined) return r.invoiceId ? 0 : Number(r.amount) || 0;
   return Math.max(0, (Number(r.amount) || 0) - (Number(r.applied) || 0));
 }

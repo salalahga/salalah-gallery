@@ -4,6 +4,7 @@ import { store, useDB, today } from '../core/store';
 import type { Payslip, Advance } from '../core/types';
 import { money, monthLabel, payrollCalc, fmtDate } from '../core/calc';
 import { lookup } from '../core/helpers';
+import { deleteAdvance } from '../core/ledger';
 import { PageHeader, Badge, Empty, Modal, Field, Stat, Tabs, toast, confirmDelete } from '../components/ui';
 import { Wallet, Users, HandCoins } from 'lucide-react';
 import { useT } from '../core/i18n';
@@ -14,6 +15,7 @@ export default function Payroll() {
   const [tab, setTab] = useState<'run' | 'advances'>('run');
   const [slip, setSlip] = useState<Payslip | null>(null);
   const [adv, setAdv] = useState<Partial<Advance> | null>(null);
+  const [payMethod, setPayMethod] = useState('Bank');
   const shift = (n: number) => { const d = new Date(month + '-01T00:00:00'); d.setMonth(d.getMonth() + n); setMonth(d.toISOString().slice(0, 7)); };
   const slips = db.payslips.filter((p) => p.month === month);
   const staff = db.staff.filter((x) => x.active);
@@ -31,15 +33,18 @@ export default function Payroll() {
   const recalc = (p: Payslip, patch: Partial<Payslip>) => { const n = { ...p, ...patch }; n.net = Math.max(0, n.basic + n.overtimePay + n.allowance + (n.bonus || 0) - (n.deductions || 0) - n.advance); store.upsert('payslips', n); };
   const pay = (p: Payslip) => {
     const st = L.staff(p.staffId);
+    if (!(p.net > 0) && !window.confirm(`Net pay for ${st?.name} is ${money(p.net, s)}. Mark as paid anyway?`)) return;
     store.upsert('payslips', { ...p, paid: true, paidDate: today() });
-    store.upsert('txns', { date: today(), kind: 'expense', category: 'Salary', amount: p.net, method: 'Bank', description: `Salary ${monthLabel(month)} — ${st?.name}`, ref: `PAY-${month}` });
-    db.advances.filter((a) => a.staffId === p.staffId && !a.recovered).forEach((a) => store.upsert('advances', { ...a, recovered: true }));
+    if (p.net > 0) store.upsert('txns', { date: today(), kind: 'expense', category: 'Salary', amount: p.net, method: payMethod, description: `Salary ${monthLabel(month)} — ${st?.name}`, ref: `PAY-${month}` });
+    // only the advances that were deducted on this payslip (given up to the end of its month)
+    db.advances.filter((a) => a.staffId === p.staffId && !a.recovered && a.date <= `${month}-31`).forEach((a) => store.upsert('advances', { ...a, recovered: true }));
     toast(`Paid ${st?.name} · recorded in accounts`);
   };
   const saveAdv = () => {
     if (!adv?.staffId || !adv.amount) return toast('Choose staff and amount');
-    store.upsert('advances', { ...adv, recovered: false } as Advance);
-    store.upsert('txns', { date: adv.date || today(), kind: 'expense', category: 'Salary', amount: adv.amount, method: 'Cash', description: `Salary advance — ${L.staff(adv.staffId)?.name}` });
+    if (!(adv.amount > 0)) return toast('Enter a positive amount');
+    const t = store.upsert('txns', { date: adv.date || today(), kind: 'expense', category: 'Salary', amount: adv.amount, method: 'Cash', description: `Salary advance — ${L.staff(adv.staffId)?.name}` });
+    store.upsert('advances', { ...adv, recovered: false, txnId: t.id } as Advance);
     setAdv(null); toast('Advance recorded');
   };
   const total = slips.reduce((n, p) => n + p.net, 0);
@@ -50,6 +55,7 @@ export default function Payroll() {
     <>
       <PageHeader title={t('Payroll')} sub="Salaries are calculated from attendance, overtime, allowances and advances."
         actions={<><div className="flex"><button className="icon-btn" onClick={() => shift(-1)}><ChevronLeft size={18} /></button><b style={{ minWidth: 90, textAlign: 'center' }}>{monthLabel(month)}</b><button className="icon-btn" onClick={() => shift(1)}><ChevronRight size={18} /></button></div>
+          <select style={{ width: 'auto' }} value={payMethod} onChange={(e) => setPayMethod(e.target.value)} title="Salaries are paid by">{['Bank', 'Cash'].map((m) => <option key={m}>{m}</option>)}</select>
           <button className="btn primary" onClick={generate}><Calculator size={16} />{slips.length ? 'Recalculate' : 'Run payroll'}</button></>} />
       <div className="grid g3 mb">
         <Stat label={`Net payroll · ${monthLabel(month)}`} value={money(total, s)} icon={<Wallet size={20} />} tone="wood" />
@@ -80,7 +86,7 @@ export default function Payroll() {
         <h3>Salary advances <button className="btn sm primary" onClick={() => setAdv({ date: today(), staffId: staff[0]?.id })}><Plus size={14} />New advance</button></h3>
         {db.advances.length ? <div className="table-wrap"><table><thead><tr><th>Date</th><th>Staff</th><th>Note</th><th className="num">Amount</th><th>Status</th><th /></tr></thead>
           <tbody>{db.advances.map((a) => <tr key={a.id}><td>{fmtDate(a.date)}</td><td>{L.staff(a.staffId)?.name}</td><td>{a.note}</td><td className="num">{money(a.amount, s)}</td><td>{a.recovered ? <Badge tone="green">Recovered</Badge> : <Badge tone="amber">Pending</Badge>}</td>
-            <td><button className="icon-btn" onClick={() => confirmDelete('this advance') && store.remove('advances', a.id)}><Trash2 size={15} /></button></td></tr>)}</tbody></table></div> : <Empty title="No advances" />}
+            <td>{!a.recovered && <button className="icon-btn" onClick={() => { if (!confirmDelete('this advance')) return; const err = deleteAdvance(a); toast(err || 'Advance deleted — its expense was removed from Accounts'); }}><Trash2 size={15} /></button>}</td></tr>)}</tbody></table></div> : <Empty title="No advances" />}
       </div>}
 
       {adv && <Modal open title="Salary advance" onClose={() => setAdv(null)} footer={<><button className="btn" onClick={() => setAdv(null)}>Cancel</button><button className="btn primary" onClick={saveAdv}>Save</button></>}>
