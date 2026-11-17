@@ -34,6 +34,13 @@ function Notifications() {
   );
 }
 
+// Clickable table rows: reachable with Tab and opened with Enter, like links.
+if (typeof window !== 'undefined') {
+  new MutationObserver(() => document.querySelectorAll<HTMLElement>('tr.click:not([tabindex])').forEach((tr) => { tr.tabIndex = 0; tr.setAttribute('role', 'link'); }))
+    .observe(document.documentElement, { childList: true, subtree: true });
+  window.addEventListener('keydown', (e) => { const t = e.target as HTMLElement; if (e.key === 'Enter' && t?.matches?.('tr.click')) t.click(); });
+}
+
 export function Shell({ appName, modules = MODULES }: { appName: string; modules?: ModuleDef[] }) {
   useLang();
   const { me, logout, can } = useSession();
@@ -45,18 +52,19 @@ export function Shell({ appName, modules = MODULES }: { appName: string; modules
   let section = '';
   return (
     <div className="shell">
-      <aside className={'side' + (open ? ' open' : '')} onClick={() => setOpen(false)}>
+      <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
+      <aside className={'side' + (open ? ' open' : '')} onClick={() => setOpen(false)} aria-label="Main menu">
         <div className="brand">
           <img src="/brand/mark.png" alt="" width="40" height="40" />
           <div><b>{me.settings.business.name}</b><small>{appName}</small></div>
         </div>
-        <nav className="nav">
+        <nav className="nav" aria-label="Modules">
           {visible.map((m) => {
             const head = m.section !== section ? (section = m.section) : null;
             return (
               <div key={m.route}>
                 {head && <div className="sec">{t(head)}</div>}
-                <a href={'#/' + m.route} className={current?.route === m.route ? 'on' : ''}><Icon name={m.icon} />{t(m.label)}</a>
+                <a href={'#/' + m.route} className={current?.route === m.route ? 'on' : ''} aria-current={current?.route === m.route ? 'page' : undefined}><Icon name={m.icon} />{t(m.label)}</a>
               </div>
             );
           })}
@@ -72,7 +80,7 @@ export function Shell({ appName, modules = MODULES }: { appName: string; modules
           <button className="btn sm" onClick={logout}>{t('Log out')}</button>
         </header>
         {!me.user.totpEnabled && ['owner', 'admin', 'accountant'].includes(me.user.role) && <div className="testbar no-print">Two-factor authentication is off for your account. <a href="#/account">Turn it on</a> — strongly recommended for anyone who can see finances.</div>}
-        <main className="page">{Page ? <Page params={params} /> : <Empty>You do not have access to any module. Ask the owner.</Empty>}</main>
+        <main className="page" id="main" tabIndex={-1} style={{ outline: 'none' }}>{Page ? <Page params={params} /> : <Empty>You do not have access to any module. Ask the owner.</Empty>}</main>
       </div>
     </div>
   );

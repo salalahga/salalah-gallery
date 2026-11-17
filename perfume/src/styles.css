@@ -6,7 +6,7 @@
   --gold: #c19a5b; --gold-2: #e6c98f; --gold-ink: #8c6a33; --gold-soft: #f6eddc;
   --rose: #e2127a; --blush: #f27ca4; --blush-soft: #fdeef3; --sage: #8fa38c; --sage-soft: #eef3ec; --amber: #b98f50; --wine: #e2264f;
   --paper: #fbf8f3; --paper-2: #f6f0e7; --card: #ffffff;
-  --text: #241d22; --muted: #7d7169; --ok: #4f7a54; --warn: #b07a26; --bad: #c2234f; --info: #4c6a8c;
+  --text: #241d22; --muted: #6f645b; --ok: #426b47; --warn: #8a5d12; --bad: #c2234f; --info: #4c6a8c;
   --radius: 18px; --radius-sm: 12px;
   --shadow: 0 1px 2px rgba(60,35,20,.04), 0 10px 30px -12px rgba(60,35,20,.14);
   --shadow-lg: 0 30px 80px -20px rgba(40,20,30,.35);
@@ -252,3 +252,99 @@ hr.sep { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
 .scanbar.ok { background: #e3f3e3; color: #1f5b2c; border: 1px solid #b8dcb9; }
 .scanbar.err { background: var(--blush-soft); color: #8a1c3c; border: 1px solid #f6c6d6; }
 .scanbar .dot { width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 0 4px rgba(0,0,0,.05); }
+
+/* =========================================================================
+   Design-system layer (tokens, states, accessibility). Applied last so it
+   refines everything above without changing class names.
+   ========================================================================= */
+:root {
+  /* spacing — 4px base */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 20px; --s6: 24px; --s8: 32px; --s12: 48px;
+  /* type scale */
+  --fs-xs: 11px; --fs-sm: 12.5px; --fs-base: 14px; --fs-md: 16px; --fs-lg: 20px; --fs-xl: 26px; --fs-2xl: 34px;
+  /* motion */
+  --t-fast: 140ms cubic-bezier(.2,.7,.2,1); --t-med: 240ms cubic-bezier(.2,.7,.2,1);
+  /* focus ring: gold halo, visible on ivory and on noir */
+  --ring: 0 0 0 2px var(--paper), 0 0 0 4px var(--gold);
+}
+
+/* keyboard focus — every interactive element shows where you are */
+:where(a, button, [role='button'], summary, select, input, textarea, .pcard):focus-visible { outline: none; box-shadow: var(--ring); border-radius: 12px; }
+.nav a:focus-visible { box-shadow: 0 0 0 2px var(--ink), 0 0 0 4px var(--gold-2); }
+.btn:focus-visible { box-shadow: var(--ring); }
+.tabs button:focus-visible, .pill-group button:focus-visible { box-shadow: var(--ring); }
+.skip { position: absolute; inset-inline-start: 8px; top: -60px; background: var(--ink); color: #fbe8c2; padding: 8px 14px; border-radius: 10px; z-index: 300; text-decoration: none; }
+.skip:focus { top: 8px; }
+
+/* consistent interactive states */
+.btn { transition: background var(--t-fast), border-color var(--t-fast), box-shadow var(--t-fast), transform var(--t-fast); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn.gold:hover:not(:disabled) { transform: translateY(-1px); }
+table.t tr.click:focus-visible td { background: #fdf8f0; }
+.card { transition: box-shadow var(--t-med), border-color var(--t-med); }
+section.card:hover { border-color: #e4d9c8; }
+
+/* rhythm */
+.page > .grid + .grid, .page > .grid + .card, .page > .card + .grid { margin-top: var(--s4); }
+.card > .row:first-child { margin-bottom: var(--s3) !important; }
+h1 { letter-spacing: -.005em; }
+.small { font-size: var(--fs-sm); }
+
+/* numbers: tabular, lining in every figure-heavy place */
+.num, .stat .value, .totals, .hero .big, .pcard .pp, table.t td { font-variant-numeric: lining-nums tabular-nums; }
+
+/* tables: sticky header inside scroll areas, calmer rows */
+.tablewrap { max-height: none; }
+.card.tablewrap table.t thead th { position: sticky; top: 0; background: var(--card); z-index: 1; }
+table.t tbody tr { transition: background var(--t-fast); }
+
+/* loading skeleton instead of plain "Loading…" */
+.skel { display: grid; gap: 10px; padding: var(--s4) 0; }
+.skel i { display: block; height: 14px; border-radius: 8px; background: linear-gradient(90deg, #f1eadf 0%, #faf5ec 40%, #f1eadf 80%); background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
+.skel i:nth-child(2) { width: 82%; } .skel i:nth-child(3) { width: 64%; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+
+/* empty state with the Belle Âme mark */
+.empty { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.empty::before { content: ''; width: 34px; height: 34px; background: url('/brand/mark.png') center / contain no-repeat; opacity: .35; filter: grayscale(.3); }
+
+/* form fields: clearer labels & error-friendly sizing */
+label.f > span:first-child { color: #4d433c; font-weight: 600; font-size: 12px; }
+input::placeholder, textarea::placeholder { color: #9b8f84; }
+input:disabled, select:disabled { background: var(--paper-2); color: var(--muted); }
+
+/* touch devices: 44px minimum targets */
+@media (pointer: coarse) {
+  .btn, .btn.sm, input, select, .tabs button, .pill-group button, .qty button { min-height: 44px; }
+  .btn.sm { padding: 8px 14px; }
+  .qty button { width: 40px; }
+  .nav a { padding: 12px; }
+}
+
+/* respect reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
+}
+
+/* high-contrast / forced colours keep focus and borders */
+@media (forced-colors: active) {
+  .btn, .card, input, select { border: 1px solid CanvasText; }
+  :focus-visible { outline: 2px solid Highlight !important; }
+}
+
+/* phone refinements */
+.top > .grow { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cartfab { display: none; }
+@media (max-width: 600px) {
+  .top { gap: 6px; }
+  .top select { max-width: none; width: 104px; padding-inline: 10px; font-size: 13px; }
+  .top > .grow { font-size: 1.1rem; }
+  .voice { border-radius: 22px; }
+  .voice select { width: 66px !important; padding-inline: 8px; font-size: 13px; }
+  .pos .products { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .products .pcard .bottle { height: 104px; }
+  .cartfab { display: flex; position: fixed; inset-inline: 12px; bottom: 12px; z-index: 40; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 14px 18px; border-radius: 18px; border: none; color: #2a1a06; font-weight: 700; font-size: 16px; cursor: pointer;
+    background: linear-gradient(135deg, #e9cf95 0%, #c9a061 45%, #a87a3c 100%); box-shadow: var(--shadow-lg); }
+  .page:has(.cartfab) { padding-bottom: 90px; }
+}

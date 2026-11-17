@@ -42,7 +42,7 @@ export default function Dashboard() {
         <button className="btn" onClick={() => window.print()}>Print / PDF</button>
       </>} />
       <div className="grid g4">
-        <Stat dark label={t('Sales today')} value={money(d.today.gross)} sub={`${d.today.orders} orders`} />
+        <Stat dark label="Average sale (month)" value={money(d.month.orders ? Math.round(d.month.gross / d.month.orders) : 0)} sub="per order, incl. VAT" />
         <Stat label={t('This week')} value={money(d.week.gross)} sub={`${d.week.orders} orders`} />
         <Stat label={t('This month')} value={money(d.month.gross)} sub={`${d.month.orders} orders · discounts ${money(d.month.discount)}`} />
         <Stat label="This year" value={money(d.year.gross)} sub={`${d.year.orders} orders`} />

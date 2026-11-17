@@ -310,6 +310,11 @@ export default function POS() {
         </Card>
       </div>
 
+      {cart.length > 0 && (
+        <button className="cartfab no-print" onClick={() => document.querySelector('.cart')?.scrollIntoView({ behavior: 'smooth' })}>
+          <span>{cart.reduce((a, l) => a + l.qty, 0)} item(s) · view cart</span><span>{quote ? money(quote.total) : '…'} OMR</span>
+        </button>
+      )}
       {choices && (
         <Modal title="Which product?" onClose={() => setChoices(null)}>
           <div className="col">{choices.list.map((v) => <button key={v.id} className="pcard" onClick={() => { add(v, choices.qty); setChoices(null); }}><Bottle name={v.brand} /><div><div className="pn">{variantName(v)}</div><div className="small muted">{v.qty} in stock · {money(v.retail_price)}</div></div></button>)}</div>

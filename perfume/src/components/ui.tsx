@@ -77,7 +77,7 @@ export const Field = ({ label, children, hint }: { label: ReactNode; children: R
   <label className="f"><span>{label}</span>{children}{hint && <span className="small muted">{hint}</span>}</label>
 );
 export const Empty = ({ children }: { children: ReactNode }) => <div className="empty">{children}</div>;
-export const Loading = () => <div className="empty">Loading…</div>;
+export const Loading = () => <div className="skel" role="status" aria-label="Loading"><i /><i /><i /></div>;
 
 const STATUS_TONE: Record<string, string> = {
   completed: 'ok', paid: 'ok', approved: 'ok', active: 'ok', received: 'ok', delivered: 'ok', fulfilled: 'ok', executed: 'ok', posted: 'ok', present: 'ok', open: 'info',
