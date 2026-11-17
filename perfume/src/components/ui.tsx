@@ -53,8 +53,8 @@ export const Stat = ({ label, value, sub, dark }: { label: ReactNode; value: Rea
   <div className={'card stat' + (dark ? ' dark' : '')}><div className="label">{label}</div><div className="value">{value}</div>{sub && <div className="sub">{sub}</div>}</div>
 );
 export const PageHead = ({ title, sub, actions }: { title: ReactNode; sub?: ReactNode; actions?: ReactNode }) => (
-  <div className="row" style={{ marginBottom: 16, alignItems: 'flex-end' }}>
-    <div className="grow"><h1 style={{ marginBottom: 0 }}>{title}</h1>{sub && <div className="muted">{sub}</div>}</div>
+  <div className="row pagehead" style={{ marginBottom: 20, alignItems: 'flex-end' }}>
+    <div className="grow"><h1 style={{ marginBottom: 2 }}>{title}</h1>{sub && <div className="muted">{sub}</div>}<span className="orn" /></div>
     {actions && <div className="row no-print">{actions}</div>}
   </div>
 );
@@ -87,8 +87,34 @@ const STATUS_TONE: Record<string, string> = {
 export const Status = ({ s }: { s?: string | null }) => (s ? <span className={'badge ' + (STATUS_TONE[s] ?? '')}>{s.replace(/_/g, ' ')}</span> : null);
 export const TestBadge = ({ on }: { on?: boolean }) => (on ? <span className="badge test" title="Sample data for testing — not a real transaction">TEST</span> : null);
 
+const LIQUIDS: [string, string][] = [['#f6a6c1', '#e2127a'], ['#c8d6c4', '#7f9a7b'], ['#f2d29a', '#b98f50'], ['#f7b6c8', '#e2264f'], ['#efe0c2', '#c19a5b'], ['#d9c2e8', '#8e5fb0']];
+const hash = (s: string) => [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+
+/** Perfume-bottle illustration; colour is fixed per brand so every brand keeps its own look. */
+export function BottleArt({ name, size = 46 }: { name?: string | null; size?: number | string }) {
+  const key = name || '?';
+  const [a, b] = LIQUIDS[hash(key) % LIQUIDS.length];
+  const id = 'b' + (hash(key) % 100000);
+  const initials = key.split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <svg width={size} height={size} viewBox="0 0 100 120" aria-hidden="true">
+      <defs>
+        <linearGradient id={id + 'l'} x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor={a} /><stop offset="1" stopColor={b} /></linearGradient>
+        <linearGradient id={id + 'c'} x1="0" y1="0" x2="1" y2="0"><stop offset="0" stopColor="#a87a3c" /><stop offset=".5" stopColor="#f0d79e" /><stop offset="1" stopColor="#a87a3c" /></linearGradient>
+      </defs>
+      <ellipse cx="50" cy="112" rx="30" ry="4" fill="#000" opacity=".08" />
+      <rect x="38" y="6" width="24" height="20" rx="4" fill={`url(#${id}c)`} />
+      <rect x="43" y="24" width="14" height="10" fill="#e9dcc5" />
+      <rect x="18" y="32" width="64" height="78" rx="16" fill={`url(#${id}l)`} />
+      <rect x="18" y="32" width="64" height="78" rx="16" fill="none" stroke="#fff" strokeOpacity=".55" strokeWidth="2" />
+      <path d="M27 42 q-3 22 0 52" stroke="#fff" strokeOpacity=".55" strokeWidth="4" fill="none" strokeLinecap="round" />
+      <rect x="32" y="60" width="36" height="24" rx="4" fill="#fffaf2" opacity=".92" />
+      <text x="50" y="77" textAnchor="middle" fontFamily="Cormorant Garamond, Georgia, serif" fontWeight="700" fontSize="14" fill="#5a4630">{initials}</text>
+    </svg>
+  );
+}
 export function Bottle({ name, url }: { name?: string | null; url?: string | null }) {
-  return <div className="bottle">{url ? <img src={url} alt="" /> : (name || '?').split(/\s+/).map((w) => w[0]).slice(0, 2).join('').toUpperCase()}</div>;
+  return <div className="bottle">{url ? <img src={url} alt="" /> : <BottleArt name={name} size="80%" />}</div>;
 }
 
 // ---------- charts (SVG, no library) ----------

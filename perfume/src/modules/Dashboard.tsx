@@ -6,6 +6,8 @@ import { api, qs } from '../core/api';
 
 const CH: Record<string, string> = { pos: 'Shop (POS)', web: 'Website', whatsapp: 'WhatsApp', instagram: 'Instagram', snapchat: 'Snapchat', facebook: 'Facebook', phone: 'Phone', wholesale: 'Wholesale' };
 
+const greeting = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
+
 export default function Dashboard() {
   const { can, me } = useSession();
   const [branch, setBranch] = useState('');
@@ -18,7 +20,23 @@ export default function Dashboard() {
   const online = ['web', 'instagram', 'snapchat', 'facebook'].reduce((a, k) => a + ch(k), 0);
   return (
     <>
-      <PageHead title={t('Dashboard')} sub={`${me.settings.business.name} · all figures in OMR`} actions={<>
+      <div className="hero">
+        <img className="mark" src="/brand/mark.png" alt="" />
+        <div className="heroin">
+          <div className="eyebrow">{new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</div>
+          <h1>{greeting()}, {me.user.name.split(' ')[0]}</h1>
+          <div style={{ marginTop: 14, color: '#cbbfae', fontSize: 12, letterSpacing: '.16em', textTransform: 'uppercase' }}>{t('Sales today')}</div>
+          <div className="big">{money(d.today.gross)} <span style={{ fontSize: '1.1rem', color: '#cbbfae' }}>OMR</span></div>
+          <div className="chips">
+            <span>{d.today.orders} orders today</span>
+            <span>{d.month.orders} orders this month</span>
+            {d.low.length > 0 && <span>{d.low.length} low-stock alerts</span>}
+            {d.pending.length > 0 && <span>{d.pending.length} orders waiting</span>}
+            {d.offers.length > 0 && <span>{d.offers.length} offers live</span>}
+          </div>
+        </div>
+      </div>
+      <PageHead title="Business overview" sub={`${me.settings.business.name} · all figures in OMR`} actions={<>
         {(branches?.length || 0) > 1 && !me.branchScope && <select value={branch} onChange={(e) => setBranch(e.target.value)} style={{ width: 'auto' }}><option value="">All branches</option>{branches!.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select>}
         {can('reports', 'export') && <button className="btn" onClick={() => download('/export/sales' + qs({ from: d.ranges.month[0], to: d.ranges.month[1] }))}>Export month (CSV)</button>}
         <button className="btn" onClick={() => window.print()}>Print / PDF</button>
