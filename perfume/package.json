@@ -1,0 +1,31 @@
+{
+  "name": "perfume-business-system",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Perfume business management & omnichannel commerce system (POS, inventory, purchases, finance, CRM, promotions, manager dashboard)",
+  "scripts": {
+    "dev": "vite",
+    "dev:server": "node --watch server/index.js",
+    "build": "tsc -b && vite build",
+    "start": "node server/index.js",
+    "seed:demo": "node server/seed-demo.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.16",
+    "express": "^5.3.0",
+    "pg": "^8.23.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6"
+  },
+  "engines": { "node": ">=22.13" }
+}
