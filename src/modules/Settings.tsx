@@ -81,6 +81,15 @@ export default function SettingsPage() {
           {([['expenseCategories', 'Expense categories'], ['incomeCategories', 'Income categories'], ['roles', 'Staff roles']] as const).map(([k, label]) =>
             <Field key={k} label={`${label} (comma separated)`}><textarea defaultValue={s[k].join(', ')} onBlur={(e) => set({ [k]: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} /></Field>)}
         </div></div>
+        <div className="card"><h3>Stock, currencies & tax</h3><div className="form" style={{ gridTemplateColumns: '1fr' }}>
+          <Field label="Store locations (comma separated) — for stock transfers"><textarea defaultValue={(s.stockLocations || ['Main store']).join(', ')} onBlur={(e) => set({ stockLocations: e.target.value.split(',').map((x) => x.trim()).filter(Boolean) })} placeholder="Main store, Workshop, Site" /></Field>
+          <Field label={`Other currencies — one per line: CODE = value of 1 unit in ${s.currency}`}><textarea defaultValue={(s.currencies || []).map((c) => `${c.code} = ${c.rate}`).join('\n')} placeholder={'USD = 0.385\nAED = 0.1048\nINR = 0.0046'}
+            onBlur={(e) => set({ currencies: e.target.value.split('\n').map((l) => { const m = /^\s*([A-Za-z]{3})\s*[=:]\s*([\d.]+)/.exec(l); return m ? { code: m[1].toUpperCase(), rate: +m[2] } : null; }).filter((x): x is { code: string; rate: number } => !!x && x.rate > 0 && x.code !== s.currency) })} /></Field>
+          <Field label="VAT rates — one per line: name = %"><textarea defaultValue={(s.taxRates?.length ? s.taxRates : [{ name: 'Standard', rate: 5 }, { name: 'Zero-rated', rate: 0 }, { name: 'Exempt', rate: 0 }]).map((t) => `${t.name} = ${t.rate}`).join('\n')}
+            onBlur={(e) => set({ taxRates: e.target.value.split('\n').map((l) => { const m = /^(.+?)\s*[=:]\s*([\d.]+)/.exec(l); return m ? { name: m[1].trim(), rate: +m[2] } : null; }).filter((x): x is { name: string; rate: number } => !!x) })} /></Field>
+          <Field label={`Notify me of single money entries from (${s.currency})`}><input type="number" value={s.bigTxn ?? 500} onChange={(e) => set({ bigTxn: +e.target.value })} /></Field>
+          <p className="muted" style={{ margin: 0 }}>Oman VAT: standard rate 5%. The default VAT on new documents is set in Business above; choose another rate on each quotation, invoice or purchase.</p>
+        </div></div>
         <div className="card"><h3>Payroll rules</h3><div className="form two">
           <Field label="Working days / month"><input type="number" value={s.workingDaysPerMonth} onChange={(e) => set({ workingDaysPerMonth: +e.target.value })} /></Field>
           <Field label="Work hours / day"><input type="number" value={s.workHoursPerDay} onChange={(e) => set({ workHoursPerDay: +e.target.value })} /></Field>

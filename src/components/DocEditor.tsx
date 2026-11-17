@@ -48,7 +48,7 @@ export function LinesEditor({ doc, set, s }: { doc: Doc; set: (p: Doc) => void; 
         {Object.keys(byKind(items)).length > 1 && Object.entries(byKind(items)).map(([k, v]) => <div key={k} className="muted"><span>{KIND_LABEL[k]}</span><span>{money(v, s)}</span></div>)}
         <div><span>Subtotal</span><span>{money(tot.subtotal, s)}</span></div>
         <div><span>Discount</span><input type="number" style={{ width: 110, textAlign: 'right' }} value={doc.discount || 0} onChange={(e) => set({ discount: +e.target.value })} /></div>
-        <div><span>VAT %</span><input type="number" style={{ width: 110, textAlign: 'right' }} value={doc.vat ?? s.vatRate} onChange={(e) => set({ vat: +e.target.value })} /></div>
+        <div><span>VAT %</span><span className="flex" style={{ gap: 4 }}>{(s.taxRates || []).length > 0 && <select style={{ width: 'auto' }} value="" onChange={(e) => e.target.value !== '' && set({ vat: +e.target.value })}><option value="">Rate…</option>{(s.taxRates || []).map((r) => <option key={r.name} value={r.rate}>{r.name} {r.rate}%</option>)}</select>}<input type="number" style={{ width: 110, textAlign: 'right' }} value={doc.vat ?? s.vatRate} onChange={(e) => set({ vat: +e.target.value })} /></span></div>
         <div><span>VAT amount</span><span>{money(tot.vat, s)}</span></div>
         <div className="grand"><span>Total</span><span>{money(tot.total, s)}</span></div>
       </div>

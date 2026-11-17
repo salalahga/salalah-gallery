@@ -9,6 +9,7 @@ import { api } from './core/api';
 import { Toaster, Modal, Field, Avatar, toast } from './components/ui';
 import { Login, Setup, Splash } from './modules/Auth';
 import { PROJECT_CATS } from './core/calc';
+import { NotificationBell } from './components/Notifications';
 
 export default function App() {
   const st = useSession();
@@ -42,6 +43,7 @@ function UserMenu() {
       <div className="quick-menu">
         <button onClick={() => setPw({ current: '', next: '' })}><KeyRound size={14} /> Change password</button>
         <button onClick={() => session.logout()}><LogOut size={14} /> Log out</button>
+        {store.mode === 'server' && <button onClick={async () => { if (!window.confirm('Sign out this account on every other phone and computer?')) return; try { await api('/api/logout-all', { method: 'POST' }); toast('Signed out on all other devices'); } catch (e) { toast((e as Error).message); } }}><LogOut size={14} /> Sign out other devices</button>}
       </div>
       {pw && <Modal open title="Change password" onClose={() => setPw(null)} footer={<><button className="btn" onClick={() => setPw(null)}>Cancel</button><button className="btn primary" onClick={change}>Save</button></>}>
         <div className="form two">
@@ -125,6 +127,7 @@ function Workspace() {
           <button className="cmd" onClick={() => setPalette(true)}><Search size={16} /><span>Search modules…</span><kbd>Ctrl K</kbd></button>
           <div className="top-actions">
             <SyncBadge />
+            {office && <NotificationBell />}
             {quick.length > 0 && <div className="quick">
               <button className="btn primary sm"><Plus size={16} /><span className="hide-sm">Quick add</span></button>
               <div className="quick-menu">{quick.map((x) => <button key={x.label} onClick={x.go}>{x.label}</button>)}</div>

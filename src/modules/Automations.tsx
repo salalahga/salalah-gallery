@@ -5,7 +5,7 @@ import { api } from '../core/api';
 import { go } from '../core/router';
 import { PageHeader, Modal, Field, Badge, Empty, Tabs, toast, confirmDelete } from '../components/ui';
 
-type Action = { type: 'telegram' | 'email' | 'webhook' | 'task'; to?: string; template?: string; subject?: string; title?: string; url?: string; staffId?: string; priority?: string };
+type Action = { type: 'telegram' | 'email' | 'webhook' | 'task' | 'whatsapp'; templateName?: string; params?: string[]; lang?: string; to?: string; template?: string; subject?: string; title?: string; url?: string; staffId?: string; priority?: string };
 type Rule = { id: string; name: string; enabled: boolean; trigger: string; filter?: { workTypeId?: string }; actions: Action[] };
 type LogRow = { id: string; at: number; rule: string; trigger: string; ok: boolean; detail: string };
 
@@ -20,7 +20,7 @@ const VARS: Record<string, string> = {
   daily: '{{summary}} {{date}}',
 };
 const varsFor = (t: string) => VARS[t.startsWith('payment') ? 'payment' : t.startsWith('daily') ? 'daily' : t.startsWith('stock') ? 'stock' : t.startsWith('expense') ? 'expense' : t.split('.')[0]] || '{{event}} {{date}} {{business}}';
-const ACTION_LABEL = { telegram: '✈️ Telegram message', email: '✉️ Email', webhook: '🔗 Webhook (n8n / Make / Zapier / Sheets)', task: '🔨 Create a task' };
+const ACTION_LABEL = { whatsapp: '🟢 WhatsApp (Business API)', telegram: '✈️ Telegram message', email: '✉️ Email', webhook: '🔗 Webhook (n8n / Make / Zapier / Sheets)', task: '🔨 Create a task' };
 
 export default function Automations() {
   const db = useDB(); const online = store.mode === 'server';
@@ -49,7 +49,7 @@ export default function Automations() {
   const runTest = async (r: Rule) => { setResults(['Running…']); try { const x = await api<{ results: string[] }>('/api/automations/test', { method: 'POST', body: r }); setResults(x.results.length ? x.results : ['This rule has no actions']); void loadLog(); } catch (e) { setResults([(e as Error).message]); } };
   const setAction = (i: number, p: Partial<Action>) => edit && setEdit({ ...edit, actions: edit.actions.map((a, k) => (k === i ? { ...a, ...p } : a)) });
   const triggerLabel = (t: string) => (t === '*' ? 'Every event' : triggers[t] || t);
-  const missing = (rules || []).filter((r) => r.enabled).flatMap((r) => r.actions.map((a) => a.type)).filter((t) => t !== 'task' && !pluginCfg[t === 'webhook' ? 'webhooks' : t]?.enabled);
+  const missing = (rules || []).filter((r) => r.enabled).flatMap((r) => r.actions.map((a) => a.type)).filter((t) => t !== 'task' && !pluginCfg[t === 'webhook' ? 'webhooks' : t === 'whatsapp' ? 'waapi' : t]?.enabled);
 
   return (
     <>
@@ -101,7 +101,10 @@ export default function Automations() {
               {a.type === 'webhook' && <Field label="URL (empty = all URLs in the Webhooks plugin)" span={3}><input value={a.url || ''} onChange={(e) => setAction(i, { url: e.target.value })} /></Field>}
               {a.type === 'task' && <><Field label="Task title"><input value={a.title || ''} onChange={(e) => setAction(i, { title: e.target.value })} /></Field>
                 <Field label="Assign to"><select value={a.staffId || ''} onChange={(e) => setAction(i, { staffId: e.target.value })}><option value="">Unassigned</option>{db.staff.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field></>}
-              {(a.type === 'telegram' || a.type === 'email') && <Field label="Message" span={3}><textarea value={a.template || ''} onChange={(e) => setAction(i, { template: e.target.value })} /></Field>}
+              {a.type === 'whatsapp' && <><Field label="Send to"><select value={a.to || 'customer'} onChange={(e) => setAction(i, { to: e.target.value })}><option value="customer">The customer</option><option value="staff">The staff member involved</option></select></Field>
+                <Field label="Approved template name (optional)"><input value={a.templateName || ''} onChange={(e) => setAction(i, { templateName: e.target.value || undefined })} placeholder="payment_reminder" /></Field>
+                {a.templateName && <Field label="Template values {{1}}, {{2}}… (one per line)" span={3}><textarea value={(a.params || []).join('\n')} onChange={(e) => setAction(i, { params: e.target.value.split('\n') })} placeholder={'{{customer.name}}\n{{invoice.number}}\n{{balance}}'} /></Field>}</>}
+              {(a.type === 'telegram' || a.type === 'email' || (a.type === 'whatsapp' && !a.templateName)) && <Field label={a.type === 'whatsapp' ? 'Message (free text reaches only customers who wrote in the last 24 h — use a template otherwise)' : 'Message'} span={3}><textarea value={a.template || ''} onChange={(e) => setAction(i, { template: e.target.value })} /></Field>}
             </div>
           </div>)}
           <div className="span-3"><button className="btn sm" onClick={() => setEdit({ ...edit, actions: [...edit.actions, { type: 'telegram', template: '' }] })}><Plus size={14} />Add action</button></div>

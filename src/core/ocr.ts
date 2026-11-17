@@ -35,7 +35,8 @@ async function prepare(src: string): Promise<HTMLCanvasElement> {
   return c;
 }
 
-export interface BillInfo { text: string; confidence: number; amount?: number; date?: string; vendor?: string; billNo?: string; vat?: number }
+export interface BillItem { description: string; qty: number; price: number; total: number }
+export interface BillInfo { text: string; confidence: number; amount?: number; date?: string; vendor?: string; billNo?: string; vat?: number; items?: BillItem[] }
 
 export async function readBill(src: string, onProgress?: (p: number) => void): Promise<BillInfo> {
   const w = await getWorker();
@@ -104,6 +105,19 @@ export function parseBill(text: string): Omit<BillInfo, 'text' | 'confidence'> {
     const m = /\b(?:invoice|inv|bill|receipt|rcpt|voucher)\s*(?:no|number|#)?\.?\s*[:#-]?\s*([A-Z]{0,4}[-/]?\d[\w/-]{0,14})/i.exec(l);
     if (m) { out.billNo = m[1]; break; }
   }
+  // item lines: "<description> <qty> <price> <total>" where qty × price ≈ total
+  const items: BillItem[] = [];
+  for (const l of lines) {
+    if (/total|vat|tax|discount|balance|change|cash|tel|phone/i.test(l)) continue;
+    const nums = amounts(l); const desc = l.replace(/[\d.,]+/g, ' ').replace(/\b(x|pcs|nos|no|qty|ea|each|omr|ro)\b/gi, ' ').replace(/\s+/g, ' ').trim();
+    if (nums.length < 2 || (desc.match(/[A-Za-z]/g) || []).length < 3) continue;
+    const total = nums[nums.length - 1];
+    let hit: BillItem | undefined;
+    for (let i = 0; i < nums.length - 1 && !hit; i++) for (let j = 0; j < nums.length - 1 && !hit; j++) if (i !== j && Math.abs(nums[i] * nums[j] - total) < Math.max(0.011, total * 0.01)) hit = { description: desc.slice(0, 60), qty: Math.min(nums[i], nums[j]) === nums[i] && Number.isInteger(nums[i]) ? nums[i] : nums[j], price: 0, total };
+    if (!hit && nums.length === 2 && Number.isInteger(nums[0]) && nums[0] > 0 && nums[0] < 1000) hit = { description: desc.slice(0, 60), qty: nums[0], price: +(nums[1] / nums[0]).toFixed(3), total: nums[1] };
+    if (hit) { if (!hit.price) hit.price = +(hit.total / (hit.qty || 1)).toFixed(3); items.push(hit); }
+  }
+  if (items.length) out.items = items.slice(0, 30);
   // shop name: first line that looks like a name
   for (const l of lines.slice(0, 6)) {
     const letters = (l.match(/[A-Za-z]/g) || []).length;

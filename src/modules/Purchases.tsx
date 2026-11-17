@@ -1,5 +1,7 @@
 import { useState } from 'react';
-import { Plus, Trash2, Printer, PackageCheck, HandCoins, Truck, Phone, MessageCircle, Building2 } from 'lucide-react';
+import { Plus, Trash2, Printer, PackageCheck, HandCoins, Truck, Phone, MessageCircle, Building2, Undo2, ScrollText } from 'lucide-react';
+import { moveStock } from '../core/stock';
+import { useUser } from '../core/session';
 import { store, useDB, nextNumber, today, uid } from '../core/store';
 import type { Purchase, PurchaseLine, Supplier } from '../core/types';
 import { money, fmtDate, catOf } from '../core/calc';
@@ -8,7 +10,28 @@ import { Modal, Field, PageHeader, Tabs, Empty, Badge, Stat, SearchBox, toast, c
 import { Letterhead, Bi, Signatures } from '../components/DocParts';
 
 export const poTotal = (p: Pick<Purchase, 'lines' | 'vat'>) => { const sub = p.lines.reduce((n, l) => n + (Number(l.qty) || 0) * (Number(l.rate) || 0), 0); return sub * (1 + (Number(p.vat) || 0) / 100); };
-const poDue = (p: Purchase) => (p.status === 'cancelled' ? 0 : Math.max(0, poTotal(p) - (Number(p.paid) || 0)));
+/** Value of goods sent back, and money the supplier refunded for them. */
+export const poReturned = (p: Pick<Purchase, 'returns'>) => (p.returns || []).reduce((n, r) => n + r.amount, 0);
+const poRefunded = (p: Pick<Purchase, 'returns'>) => (p.returns || []).reduce((n, r) => n + (Number(r.refund) || 0), 0);
+export const poDue = (p: Purchase) => (p.status === 'cancelled' ? 0 : Math.max(0, poTotal(p) - poReturned(p) - (Number(p.paid) || 0) + poRefunded(p)));
+
+export interface SupLine { date: string; ref: string; text: string; debit: number; credit: number }
+/** Supplier ledger: bills (credit = we owe), payments and returns (debit). Positive balance = we owe them. */
+export function supplierLedger(db: { purchases: Purchase[] }, supplierId: string): SupLine[] {
+  const out: SupLine[] = [];
+  for (const p of db.purchases.filter((x) => x.supplierId === supplierId && x.status !== 'cancelled')) {
+    out.push({ date: p.receivedDate || p.date, ref: p.billNo || p.number, text: `Purchase ${p.number}${p.billNo ? ' · bill ' + p.billNo : ''}`, debit: 0, credit: poTotal(p) });
+    const listed = (p.payments || []).reduce((n, x) => n + x.amount, 0);
+    for (const x of p.payments || []) out.push({ date: x.date, ref: p.number, text: `Payment · ${x.method}${x.chequeNo ? ' ' + x.chequeNo : ''}`, debit: x.amount, credit: 0 });
+    const rest = (Number(p.paid) || 0) - listed;
+    if (rest > 0.0005) out.push({ date: p.date, ref: p.number, text: 'Payment recorded', debit: rest, credit: 0 });
+    for (const r of p.returns || []) {
+      out.push({ date: r.date, ref: p.number, text: `Goods returned${r.reason ? ' — ' + r.reason : ''}`, debit: r.amount, credit: 0 });
+      if (r.refund) out.push({ date: r.date, ref: p.number, text: 'Refund received from supplier', debit: 0, credit: r.refund });
+    }
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
 const STATUS = { ordered: { label: 'Ordered', tone: 'blue' }, received: { label: 'Received', tone: 'green' }, cancelled: { label: 'Cancelled', tone: 'gray' } } as const;
 
 export default function Purchases() {
@@ -18,6 +41,9 @@ export default function Purchases() {
   const [po, setPo] = useState<Partial<Purchase> | null>(null);
   const [sup, setSup] = useState<Partial<Supplier> | null>(null);
   const [view, setView] = useState<Purchase | null>(null);
+  const user = useUser();
+  const [ret, setRet] = useState<{ p: Purchase; qty: Record<string, number>; reason: string; refund: number; method: string } | null>(null);
+  const [ledger, setLedger] = useState<Supplier | null>(null);
   const [pay, setPay] = useState<{ p: Purchase; amount: number; method: string; chequeNo?: string; chequeDate?: string; bank?: string } | null>(null);
   const supplier = (id?: string) => db.suppliers.find((x) => x.id === id);
 
@@ -25,7 +51,7 @@ export default function Purchases() {
   const savePo = () => { if (!po?.supplierId) return toast('Choose a supplier'); const v = store.upsert('purchases', po as Purchase); setPo(null); toast('Purchase order saved'); return v as Purchase; };
   const receive = (p: Purchase) => {
     let n = 0;
-    for (const l of p.lines) { const it = L.item(l.itemId); if (it) { store.upsert('items', { ...it, qty: it.qty + (Number(l.qty) || 0), cost: Number(l.rate) || it.cost }); n++; } }
+    for (const l of p.lines) { if (l.itemId && L.item(l.itemId)) { moveStock(store.get(), { date: today(), itemId: l.itemId, kind: 'in', qty: Number(l.qty) || 0, cost: Number(l.rate) || undefined, purchaseId: p.id, note: `${p.number} — ${supplier(p.supplierId)?.name || ''}` }, user?.name); n++; } }
     store.upsert('purchases', { ...p, status: 'received', receivedDate: today() });
     toast(n ? `Received — ${n} stock item${n > 1 ? 's' : ''} updated` : 'Marked as received');
   };
@@ -33,11 +59,25 @@ export default function Purchases() {
     if (!pay || pay.amount <= 0) return;
     if (pay.amount > poDue(pay.p) + 0.0005) return toast(`More than what is due (${money(poDue(pay.p), s)})`);
     if (pay.method === 'Cheque' && !pay.chequeNo?.trim()) return toast('Enter the cheque number');
-    store.upsert('purchases', { ...pay.p, paid: (Number(pay.p.paid) || 0) + pay.amount });
     const cat = pay.p.lines.some((l) => /board|sheet|mdf|ply|acp|acrylic/i.test(l.description + (L.item(l.itemId)?.category || ''))) ? catOf(s, 'Wood and Plywood', 'Boards & Sheets') : /hinge|screw|handle|runner|hardware/i.test(pay.p.lines.map((l) => l.description).join(' ')) ? catOf(s, 'Hardware and Accessories', 'Hardware') : catOf(s, 'Materials');
     const t = store.upsert('txns', { date: today(), kind: 'expense', category: cat, amount: pay.amount, method: pay.method, description: `${pay.p.number} — ${supplier(pay.p.supplierId)?.name || 'Supplier'}`, ref: pay.p.billNo || pay.p.number, jobId: pay.p.jobId });
+    store.upsert('purchases', { ...pay.p, paid: (Number(pay.p.paid) || 0) + pay.amount, payments: [...(pay.p.payments || []), { id: uid(), date: today(), amount: pay.amount, method: pay.method, txnId: t.id, chequeNo: pay.chequeNo }] });
     if (pay.method === 'Cheque') store.upsert('cheques', { direction: 'issued', chequeNo: pay.chequeNo!, bank: pay.bank, date: pay.chequeDate || today(), amount: pay.amount, party: supplier(pay.p.supplierId)?.name || 'Supplier', status: 'pending', purchaseId: pay.p.id, txnId: t.id, note: pay.p.number });
     setPay(null); toast('Supplier payment recorded in Accounts');
+  };
+  const doReturn = () => {
+    if (!ret) return; const p = ret.p;
+    const lines = p.lines.filter((l) => (ret.qty[l.id] || 0) > 0).map((l) => ({ lineId: l.id, qty: ret.qty[l.id] }));
+    if (!lines.length) return toast('Enter the quantity sent back');
+    for (const x of lines) { const l = p.lines.find((y) => y.id === x.lineId)!; const before = (p.returns || []).flatMap((r) => r.lines).filter((r) => r.lineId === l.id).reduce((n, r) => n + r.qty, 0); if (x.qty > l.qty - before + 1e-9) return toast(`Only ${l.qty - before} ${l.unit} of ${l.description} can be returned`); }
+    const amount = +lines.reduce((n, x) => { const l = p.lines.find((y) => y.id === x.lineId)!; return n + x.qty * l.rate * (1 + (Number(p.vat) || 0) / 100); }, 0).toFixed(3);
+    const overpaid = Math.max(0, (Number(p.paid) || 0) - (poTotal(p) - poReturned(p) - amount));
+    const refund = Math.min(Number(ret.refund) || 0, overpaid + 1e-9);
+    if (p.status === 'received') for (const x of lines) { const l = p.lines.find((y) => y.id === x.lineId)!; if (l.itemId) { const err = moveStock(store.get(), { date: today(), itemId: l.itemId, kind: 'return', qty: x.qty, purchaseId: p.id, note: `${p.number} — ${ret.reason || 'returned'}` }, user?.name); if (err) return toast(err); } }
+    let txnId: string | undefined;
+    if (refund > 0) txnId = store.upsert('txns', { date: today(), kind: 'income', category: 'Supplier refund', amount: refund, method: ret.method, description: `Refund for goods returned — ${p.number} ${supplier(p.supplierId)?.name || ''}`, ref: p.number, jobId: p.jobId }).id;
+    store.upsert('purchases', { ...p, returns: [...(p.returns || []), { id: uid(), date: today(), lines, amount, reason: ret.reason || undefined, refund: refund || undefined, txnId }] });
+    setRet(null); toast(`Return of ${money(amount, s)} recorded${refund ? `, refund ${money(refund, s)} in Accounts` : ''}`);
   };
   const setLine = (i: number, p: Partial<PurchaseLine>) => po && setPo({ ...po, lines: po.lines!.map((l, k) => (k === i ? { ...l, ...p } : l)) });
   const orders = db.purchases.filter((p) => (p.number + (supplier(p.supplierId)?.name || '') + (p.billNo || '')).toLowerCase().includes(q.toLowerCase()));
@@ -61,11 +101,12 @@ export default function Purchases() {
           <thead><tr><th>PO</th><th>Supplier</th><th>Date</th><th>Status</th><th className="num">Total</th><th className="num">To pay</th><th /></tr></thead>
           <tbody>{orders.map((p) => { const due = poDue(p); const late = p.dueDate && due > 0 && (daysFrom(p.dueDate) ?? 1) < 0; return (
             <tr key={p.id} className="click" onClick={() => setPo(structuredClone(p))}>
-              <td><b>{p.number}</b>{p.billNo && <div className="muted">Bill {p.billNo}</div>}</td><td>{supplier(p.supplierId)?.name}<div className="muted">{L.job(p.jobId)?.code}</div></td><td>{fmtDate(p.date)}</td>
+              <td><b>{p.number}</b>{p.billNo && <div className="muted">Bill {p.billNo}</div>}</td><td>{supplier(p.supplierId)?.name}<div className="muted">{L.job(p.jobId)?.code || 'Workshop stock'}</div></td><td>{fmtDate(p.date)}</td>
               <td><Badge tone={STATUS[p.status].tone}>{STATUS[p.status].label}</Badge>{late && <div><Badge tone="red">Overdue</Badge></div>}</td>
-              <td className="num">{money(poTotal(p), s)}</td><td className={`num ${due > 0 ? 'neg' : ''}`}><b>{money(due, s)}</b></td>
+              <td className="num">{money(poTotal(p), s)}{poReturned(p) > 0 && <div className="muted">− {money(poReturned(p), s)} returned</div>}</td><td className={`num ${due > 0 ? 'neg' : ''}`}><b>{money(due, s)}</b></td>
               <td onClick={(e) => e.stopPropagation()}><div className="row-actions">
                 {p.status === 'ordered' && <button className="icon-btn" title="Goods received" onClick={() => receive(p)}><PackageCheck size={16} /></button>}
+                {p.status !== 'cancelled' && <button className="icon-btn" title="Return goods to supplier" onClick={() => setRet({ p, qty: {}, reason: '', refund: 0, method: 'Cash' })}><Undo2 size={16} /></button>}
                 {due > 0 && <button className="icon-btn" title="Pay supplier" onClick={() => setPay({ p, amount: +due.toFixed(3), method: 'Cash' })}><HandCoins size={16} /></button>}
                 <button className="icon-btn" title="Print" onClick={() => setView(p)}><Printer size={16} /></button>
               </div></td></tr>); })}</tbody></table></div> : <Empty title="No purchase orders" hint="Order boards, ACP, acrylic and hardware from your suppliers here." />}</div>
@@ -73,7 +114,8 @@ export default function Purchases() {
         {db.suppliers.map((x) => <div key={x.id} className="card" style={{ cursor: 'pointer' }} onClick={() => setSup({ ...x })}>
           <div className="flex between"><b style={{ fontSize: 15 }}>{x.name}</b>{supDue(x.id) > 0 && <Badge tone="red">Owe {money(supDue(x.id), s)}</Badge>}</div>
           <div className="muted">{x.category || '—'}</div><div className="muted">{x.address}</div>
-          <div className="flex" style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>{x.phone && <a className="icon-btn" href={`tel:${x.phone}`}><Phone size={16} /></a>}{x.phone && <a className="icon-btn" target="_blank" rel="noreferrer" href={waLink(x.phone, 'Hello, ')}><MessageCircle size={16} /></a>}<span className="muted">{db.purchases.filter((p) => p.supplierId === x.id).length} orders</span></div>
+          <div className="flex" style={{ marginTop: 10 }} onClick={(e) => e.stopPropagation()}>{x.phone && <a className="icon-btn" href={`tel:${x.phone}`}><Phone size={16} /></a>}{x.phone && <a className="icon-btn" target="_blank" rel="noreferrer" href={waLink(x.phone, 'Hello, ')}><MessageCircle size={16} /></a>}<span className="muted">{db.purchases.filter((p) => p.supplierId === x.id).length} orders</span><span className="spacer" /><button className="btn sm" onClick={() => setLedger(x)}><ScrollText size={14} />Ledger</button></div>
+          {x.vatNumber && <div className="muted" style={{ fontSize: 12 }}>VAT {x.vatNumber}</div>}
         </div>)}
         {!db.suppliers.length && <div className="card"><Empty title="No suppliers yet" /></div>}
       </div>}
@@ -88,7 +130,7 @@ export default function Purchases() {
           <Field label="Supplier"><select value={po.supplierId || ''} onChange={(e) => setPo({ ...po, supplierId: e.target.value })}><option value="">— Select —</option>{db.suppliers.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}</select></Field>
           <Field label="PO number"><input value={po.number || ''} onChange={(e) => setPo({ ...po, number: e.target.value })} /></Field>
           <Field label="Date"><input type="date" value={po.date} onChange={(e) => setPo({ ...po, date: e.target.value })} /></Field>
-          <Field label="For job (optional)"><select value={po.jobId || ''} onChange={(e) => setPo({ ...po, jobId: e.target.value || undefined })}><option value="">—</option>{db.jobs.map((j) => <option key={j.id} value={j.id}>{j.code} · {j.title}</option>)}</select></Field>
+          <Field label="For"><select value={po.jobId || ''} onChange={(e) => setPo({ ...po, jobId: e.target.value || undefined })}><option value="">General workshop stock</option>{db.jobs.map((j) => <option key={j.id} value={j.id}>{j.code} · {j.title}</option>)}</select></Field>
           <Field label="Supplier bill / invoice no."><input value={po.billNo || ''} onChange={(e) => setPo({ ...po, billNo: e.target.value })} /></Field>
           <Field label="Payment due"><input type="date" value={po.dueDate || ''} onChange={(e) => setPo({ ...po, dueDate: e.target.value })} /></Field>
           <Field label="Status"><select value={po.status} onChange={(e) => setPo({ ...po, status: e.target.value as Purchase['status'] })}>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select></Field>
@@ -137,6 +179,18 @@ export default function Purchases() {
         </div>
       </Modal>}
 
+      {ret && <Modal open title={`Return goods — ${ret.p.number}`} onClose={() => setRet(null)} footer={<><button className="btn" onClick={() => setRet(null)}>Cancel</button><button className="btn primary" onClick={doReturn}>Record return</button></>}>
+        <div className="table-wrap"><table><thead><tr><th>Item</th><th className="num">Bought</th><th className="num">Already returned</th><th style={{ width: 110 }}>Return now</th></tr></thead>
+          <tbody>{ret.p.lines.map((l) => { const done = (ret.p.returns || []).flatMap((r) => r.lines).filter((r) => r.lineId === l.id).reduce((n, r) => n + r.qty, 0); return <tr key={l.id}><td>{l.description}</td><td className="num">{l.qty} {l.unit}</td><td className="num">{done || '—'}</td>
+            <td><input type="number" min={0} max={l.qty - done} value={ret.qty[l.id] || ''} onChange={(e) => setRet({ ...ret, qty: { ...ret.qty, [l.id]: +e.target.value } })} /></td></tr>; })}</tbody></table></div>
+        <div className="form two" style={{ marginTop: 10 }}>
+          <Field label="Reason" span={3}><input value={ret.reason} onChange={(e) => setRet({ ...ret, reason: e.target.value })} placeholder="Damaged, wrong size…" /></Field>
+          <Field label={`Refund received (${s.currency})`}><input type="number" value={ret.refund || ''} onChange={(e) => setRet({ ...ret, refund: +e.target.value })} placeholder="0 = deduct from what we owe" /></Field>
+          <Field label="Refund method"><select value={ret.method} onChange={(e) => setRet({ ...ret, method: e.target.value })}>{['Cash', 'Bank transfer', 'Cheque'].map((m) => <option key={m}>{m}</option>)}</select></Field>
+        </div>
+        <p className="muted">Received stock is taken out of Inventory. Without a refund, the value is deducted from what you owe this supplier.</p>
+      </Modal>}
+      {ledger && <SupplierLedger supplier={ledger} onClose={() => setLedger(null)} />}
       {view && <Modal open wide title={view.number} onClose={() => setView(null)} footer={<><span className="spacer" /><button className="btn" onClick={() => setView(null)}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print / Save PDF</button></>}>
         <div className="print-area"><div className="doc">
           <Letterhead s={s} title="PURCHASE ORDER" meta={<><div><b>{view.number}</b></div><div><Bi en="Date" inline />: {fmtDate(view.date)}</div></>} />
@@ -149,5 +203,23 @@ export default function Purchases() {
         </div></div>
       </Modal>}
     </>
+  );
+}
+
+function SupplierLedger({ supplier, onClose }: { supplier: Supplier; onClose: () => void }) {
+  const db = useDB(); const s = db.settings; let run = 0;
+  const lines = supplierLedger(db, supplier.id);
+  const bal = lines.reduce((n, l) => n + l.credit - l.debit, 0);
+  return (
+    <Modal open wide title={`Supplier ledger — ${supplier.name}`} onClose={onClose} footer={<><span className="spacer" /><button className="btn" onClick={onClose}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print / Save PDF</button></>}>
+      <div className="print-area"><div className="doc">
+        <Letterhead s={s} title="SUPPLIER STATEMENT" meta={<div>{fmtDate(today())}</div>} />
+        <div style={{ marginBottom: 12 }}><b>{supplier.name}</b><div>{supplier.address}</div><div>{supplier.phone}{supplier.vatNumber ? ` · VAT ${supplier.vatNumber}` : ''}</div></div>
+        <table style={{ width: '100%' }} className="statement"><thead><tr><th>Date</th><th>Ref</th><th>Details</th><th className="num">Paid / returned</th><th className="num">Billed</th><th className="num">We owe</th></tr></thead>
+          <tbody>{lines.map((l, i) => { run += l.credit - l.debit; return <tr key={i}><td>{fmtDate(l.date)}</td><td>{l.ref}</td><td>{l.text}</td><td className="num">{l.debit ? money(l.debit, s) : ''}</td><td className="num">{l.credit ? money(l.credit, s) : ''}</td><td className="num">{money(run, s)}</td></tr>; })}
+            {!lines.length && <tr><td colSpan={6} className="muted">No purchases yet</td></tr>}</tbody></table>
+        <div className="totals" style={{ marginTop: 12 }}><div className="grand"><span>{bal >= 0 ? 'Balance we owe' : 'Supplier owes us'}</span><span>{money(Math.abs(bal), s)}</span></div></div>
+      </div></div>
+    </Modal>
   );
 }

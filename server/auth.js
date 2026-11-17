@@ -15,10 +15,15 @@ export function verifyPassword(pw, stored) {
 
 const DAYS = 30;
 export const cookieMaxAge = DAYS * 86400;
-export function signToken(secret, userId) {
-  const body = Buffer.from(JSON.stringify({ u: userId, e: Date.now() + DAYS * 864e5 })).toString('base64url');
+export function signToken(secret, userId, version = 0) {
+  const body = Buffer.from(JSON.stringify({ u: userId, v: Number(version) || 0, e: Date.now() + DAYS * 864e5 })).toString('base64url');
   const sig = crypto.createHmac('sha256', secret).update(body).digest('base64url');
   return `${body}.${sig}`;
+}
+/** { u, v } of a valid token (v = session version: raising it logs out every device). */
+export function readTokenFull(secret, token) {
+  const u = readToken(secret, token); if (!u) return null;
+  try { const p = JSON.parse(Buffer.from(token.split('.')[0], 'base64url').toString()); return { u, v: Number(p.v) || 0 }; } catch { return null; }
 }
 export function readToken(secret, token) {
   if (!token || !token.includes('.')) return null;

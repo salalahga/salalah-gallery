@@ -52,7 +52,7 @@ export default function Jobs() {
 
   const newCode = () => nextProjectCode(db, s);
   useEffect(() => {
-    if (params.new) { setEdit(blankJob(newCode(), params.type)); go('jobs'); }
+    if (params.new) { setEdit({ ...blankJob(newCode(), params.type), ...(params.customer ? { customerId: params.customer, title: params.title || '' } : {}) }); go('jobs'); }
     if (params.id) { const j = db.jobs.find((x) => x.id === params.id); if (j) setEdit(structuredClone(j)); go('jobs'); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.new, params.id]);

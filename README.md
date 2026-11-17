@@ -98,6 +98,21 @@ Photos are stored on the server (`/api/files/…`) instead of inside records, so
 - **Executive dashboard:** date and project filters; revenue, expenses, net profit, total sales, active / completed / pending projects, customer outstanding, supplier payables, cash, bank, delayed projects, project profitability, pending payments, upcoming deliveries.
 - **Quotations:** item, material, labour and additional-charge lines with their own subtotals on the PDF.
 
+## ERP additions (sections 8–23)
+- **Customer ledger**: opening balance per customer, discounts and refunds in the statement, printable statements, **final account statement** per project and owner-only **project closing** (closed projects cannot be changed by anyone else — enforced on the server).
+- **Enquiries / CRM**: Customers → Enquiries with source (Website, WhatsApp, Instagram, walk-in…), status, follow-up date and “Make project”. The website’s *Request a quotation* form posts to `/api/public/enquiry` and creates the lead (rate-limited, honeypot, same phone merged).
+- **Purchases**: supplier ledger / statement, purchase returns (stock out, VAT and dues adjusted, optional refund), payment history, every purchase for a project or *General workshop stock*.
+- **Inventory**: stock in, issue to project (adds to project cost), transfers between store locations, wastage, stock counts — every movement logged; usage per project, valuation by category, minimum stock alerts.
+- **Production**: production orders through cutting → assembly → sanding → polishing → finishing → quality check → packing → delivery preparation; daily production log and project-wise progress.
+- **Finance**: general ledger built from every entry, owner-only journal entries, trial balance, profit & loss (with previous-period comparison), balance sheet, cash-flow statement. Other currencies with rates (amounts kept in OMR), named VAT rates.
+- **Assistant**: bill photos read by OCR (supplier, date, invoice no., items, VAT, total), category guessed, project asked, shown for checking and saved only on *Confirm*; duplicate bills flagged. Commands such as “Add 150 OMR wood purchase to Project 105”, “Show all projects with pending payments”, “How much profit did Project 105 make?”, “Show this month’s total expenses”. Answers only use figures from the books.
+- **HR**: daily work reports with ratings, monthly staff performance (attendance, overtime, tasks on time, hours, advances).
+- **Website**: service sections (custom furniture, kitchens, wardrobes, interiors), completed-project gallery, quote form; *Publish* serves it at `/site`.
+- **WhatsApp Business Platform** plugin (Meta Cloud API, approved templates) with rules for enquiry welcome, invoice, payment reminder, project status and delivery notices.
+- **Notifications** bell: delayed projects, upcoming deliveries, overdue customer and supplier payments, low stock, budget overruns, new enquiries, cheques and large money entries.
+- **Reports**: business performance vs previous period, daily/monthly/yearly sales, project P&L, purchases, expenses, VAT, outstanding — all downloadable as Excel or PDF.
+- **Security**: owner password reset with the server setup code, “sign out other devices”, a password change or reset signs the user out everywhere.
+
 ## Logins & online database
 
 The app has a small Node.js server (`server/`) that provides logins and an online database, so every phone and computer sees the same data.

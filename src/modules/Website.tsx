@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Download, Monitor, Smartphone, Tablet, Plus, Trash2, Rocket } from 'lucide-react';
 import { store, useDB } from '../core/store';
+import { api } from '../core/api';
+import { useRole } from '../core/session';
 import { buildSite, THEMES } from '../core/site';
 import { PageHeader, Field, toast } from '../components/ui';
 import { useT } from '../core/i18n';
@@ -10,11 +12,13 @@ export default function Website() {
   const [device, setDevice] = useState<'100%' | '768px' | '390px'>('100%');
   const html = useMemo(() => buildSite(db), [db]);
   const setW = (p: Partial<typeof w>) => store.setSettings({ website: { ...w, ...p } });
+  const role = useRole();
+  const publish = async () => { try { await api('/api/site', { method: 'PUT', body: { html } }); toast('Website published'); window.open('/site', '_blank'); } catch (e) { toast((e as Error).message); } };
   const download = () => { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([html], { type: 'text/html' })); a.download = 'index.html'; a.click(); toast('Website downloaded — upload index.html to any host'); };
   return (
     <>
       <PageHeader title={t('Website')} sub="Your business website is built automatically from your profile, services and products."
-        actions={<><button className="btn" onClick={() => { const win = window.open(); win?.document.write(html); win?.document.close(); }}><Monitor size={16} />Open full page</button><button className="btn primary" onClick={download}><Download size={16} />Download website</button></>} />
+        actions={<><button className="btn" onClick={() => { const win = window.open(); win?.document.write(html); win?.document.close(); }}><Monitor size={16} />Open full page</button><button className="btn" onClick={download}><Download size={16} />Download</button>{store.mode === 'server' && role === 'admin' && <button className="btn primary" onClick={() => void publish()}><Rocket size={16} />Publish</button>}</>} />
       <div className="grid site-grid">
         <div className="card">
           <h3>Design</h3>
@@ -32,7 +36,8 @@ export default function Website() {
             <p className="muted">Services come from Settings → Work types. Products marked “Show on website” in Inventory appear in the shop. Contact details come from Settings.</p>
           </div>
           <div className="section-title" style={{ marginTop: 16 }}>Publish</div>
-          <p className="muted"><Rocket size={14} style={{ verticalAlign: -2 }} /> Download the file and upload it to any host (Netlify, Hostinger, GitHub Pages), or ask Claude to publish it to your domain using the connected Netlify / Hostinger / Wix connectors.</p>
+          {store.mode === 'server' && <p><b>Live address:</b> <a href="/site" target="_blank" rel="noreferrer">{window.location.origin}/site</a> — press Publish after changes. The “Request a quotation” form sends enquiries straight to Customers → Enquiries (and to your Telegram / WhatsApp if those rules are on).</p>}
+          <p className="muted"><Rocket size={14} style={{ verticalAlign: -2 }} /> Or download the file and upload it to any host (Netlify, Hostinger, GitHub Pages), or ask Claude to publish it to your domain using the connected Netlify / Hostinger / Wix connectors.</p>
         </div>
         <div>
           <div className="device-bar">

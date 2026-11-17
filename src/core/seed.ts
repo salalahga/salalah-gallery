@@ -36,7 +36,7 @@ export const defaultSettings: Settings = {
 };
 
 export function emptyDB(): Omit<DB, 'settings'> {
-  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [], cheques: [], creditNotes: [], services: [], recurring: [], brands: [], catalog: [], selections: [], expenseChat: [] };
+  return { customers: [], jobs: [], tasks: [], staff: [], attendance: [], advances: [], payslips: [], quotations: [], invoices: [], txns: [], items: [], sales: [], socialAccounts: [], socialPosts: [], suppliers: [], purchases: [], receipts: [], deliveries: [], measurements: [], cheques: [], creditNotes: [], services: [], recurring: [], brands: [], catalog: [], selections: [], expenseChat: [], stockMoves: [], journals: [], workReports: [] };
 }
 
 export function seed(): DB {
@@ -123,7 +123,7 @@ export function seed(): DB {
       { id: 'ci3', createdAt: ts, brandId: 'br2', code: 'H1145 ST10', name: 'Natural Bardolino Oak', category: 'Board decor', finish: 'Feelwood', size: '2800×2070', thickness: '18mm', price: 32, unit: 'sheet', active: true },
       { id: 'ci4', createdAt: ts, brandId: 'br2', code: 'W980 ST2', name: 'Platinum White', category: 'Board decor', finish: 'Smoothtouch', size: '2800×2070', thickness: '18mm', price: 28, unit: 'sheet', active: true },
     ],
-    selections: [], expenseChat: [],
+    selections: [], expenseChat: [], stockMoves: [], journals: [], workReports: [],
     services: [{ id: 'sv1', createdAt: ts, number: 'SV-0001', date: d(-1), customerId: 'c3', jobId: 'j3', issue: 'Wardrobe door hinge loose', status: 'open', warranty: true }],
     recurring: [{ id: 'rc1', createdAt: ts, description: 'Workshop rent', category: 'Rent', amount: 250, method: 'Bank', day: 1, active: true, startMonth: d(0).slice(0, 7), lastMonth: d(0).slice(0, 7) }],
   };

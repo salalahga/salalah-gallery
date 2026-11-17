@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { Plus, Trash2, HandCoins, TrendingUp, TrendingDown, Scale, Wallet, Printer, MessageSquareText } from 'lucide-react';
+import { Plus, Trash2, HandCoins, TrendingUp, TrendingDown, Scale, Wallet, Printer, MessageSquareText, Lock, FileCheck2 } from 'lucide-react';
+import { useRole, useUser } from '../core/session';
+import { setStep } from '../core/workflow';
+import { Letterhead } from './DocParts';
+import { docTotals } from '../core/calc';
 import { BillThumbs } from './BillPhotos';
 import { txnSource } from '../core/ledger';
 import { store, useDB, today, uid } from '../core/store';
@@ -20,7 +24,8 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
   const cats = [...new Set([...s.expenseCategories.filter((c) => c !== 'Salary'), ...EXTRA_CATS])];
   const [exp, setExp] = useState({ date: today(), category: cats[0], description: '', amount: '', method: 'Cash' });
   const [extra, setExtra] = useState({ date: today(), description: '', amount: '' });
-  const [stmt, setStmt] = useState(false);
+  const [stmt, setStmt] = useState(false); const [fin, setFin] = useState(false);
+  const role = useRole(); const user = useUser();
   const txns = db.txns.filter((t) => t.jobId === job.id).sort((a, b) => b.date.localeCompare(a.date));
   const income = txns.filter((t) => t.kind === 'income');
   const expenses = txns.filter((t) => t.kind === 'expense');
@@ -64,7 +69,9 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
       <div className="flex between wrap" style={{ marginBottom: 6 }}><span className="muted">Collected {Math.round(pct)}% of project value</span>
         <span className="flex"><button type="button" className="btn sm" onClick={() => { const open = db.invoices.find((i) => i.jobId === job.id && invoiceBalance(i) > 0.0005); go('documents', open ? { receipt: 'new', invoice: open.id } : { receipt: 'new', job: job.id }); }}><HandCoins size={14} />Receive payment</button>
           <button type="button" className="btn sm" onClick={() => go('expchat', { job: job.id })}><MessageSquareText size={14} />Expense chat{db.expenseChat.some((m) => m.jobId === job.id && m.status === 'pending') ? ` (${db.expenseChat.filter((m) => m.jobId === job.id && m.status === 'pending').length} to approve)` : ''}</button>
-          <button type="button" className="btn sm" onClick={() => setStmt(true)}><Printer size={14} />Project statement</button></span></div>
+          <button type="button" className="btn sm" onClick={() => setStmt(true)}><Printer size={14} />Project statement</button>
+          <button type="button" className="btn sm" onClick={() => setFin(true)}><FileCheck2 size={14} />Final account</button></span></div>
+      {job.closedAt && <div className="alert mb"><Lock size={14} style={{ verticalAlign: -2 }} /> Closed on {fmtDate(job.closedAt.slice(0, 10))} by {job.closedBy || 'owner'}{job.closeNote ? ` — ${job.closeNote}` : ''}.</div>}
       <Progress value={pct} color="var(--green)" />
 
       <div className="grid g2" style={{ marginTop: 18 }}>
@@ -109,6 +116,10 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
         {Object.keys(f.byCategory).length > 1 && <div className="chips" style={{ marginTop: 10 }}>{Object.entries(f.byCategory).sort((a, b) => b[1] - a[1]).map(([c, v]) => <Badge key={c}>{c}: {money(v, s)}</Badge>)}</div>}
       </div>
 
+      {fin && <FinalAccount job={job} onClose={() => setFin(false)} canClose={role === 'admin' && !job.closedAt} onCloseProject={(note) => {
+        const n = setStep({ ...job }, 20, user?.name || 'Owner', today(), note || 'Final account approved');
+        persist({ ...n, closedAt: new Date().toISOString(), closedBy: user?.name || 'Owner', closeNote: note || undefined }); setFin(false); toast(`${job.code} closed`);
+      }} />}
       {stmt && <Modal open wide title={`Project statement — ${job.code}`} onClose={() => setStmt(false)} footer={<><button className="btn" onClick={() => setStmt(false)}>Close</button><button className="btn primary" onClick={() => window.print()}><Printer size={15} />Print</button></>}>
         <div className="print-area"><div className="doc">
           <div className="doc-head"><div><h2>{s.businessName}</h2><div>Project statement</div></div><div className="right"><b>{job.code}</b><div>{job.title}</div><div>{fmtDate(today())}</div></div></div>
@@ -126,5 +137,52 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
         </div></div>
       </Modal>}
     </div>
+  );
+}
+
+/** Final account for the customer: what was agreed, billed, paid and what is left. The owner can approve and close the project. */
+export function FinalAccount({ job, onClose, canClose, onCloseProject }: { job: Job; onClose: () => void; canClose: boolean; onCloseProject: (note: string) => void }) {
+  const db = useDB(); const s = db.settings; const f = projectFinance(db, job);
+  const cust = db.customers.find((c) => c.id === job.customerId);
+  const invoices = db.invoices.filter((i) => i.jobId === job.id);
+  const receipts = db.receipts.filter((r) => !r.voided && (r.jobId === job.id || invoices.some((i) => i.id === r.invoiceId)));
+  const notes = db.creditNotes.filter((c) => invoices.some((i) => i.id === c.invoiceId));
+  const discounts = invoices.reduce((n, i) => n + docTotals(i).discount, 0);
+  const refunds = notes.reduce((n, c) => n + (Number(c.refund) || 0), 0);
+  const [note, setNote] = useState('');
+  const close = () => {
+    if (f.toCollect > 0.0005 && !window.confirm(`${money(f.toCollect, s)} is still to be collected. Close the project anyway?`)) return;
+    onCloseProject(note);
+  };
+  return (
+    <Modal open wide title={`Final account — ${job.code}`} onClose={onClose} footer={<>
+      {canClose && <><input style={{ maxWidth: 260 }} placeholder="Closing note (optional)" value={note} onChange={(e) => setNote(e.target.value)} /><button className="btn primary" onClick={close}><Lock size={15} />Approve & close project</button></>}
+      <span className="spacer" /><button className="btn" onClick={onClose}>Close</button><button className="btn" onClick={() => window.print()}><Printer size={15} />Print / Save PDF</button></>}>
+      <div className="print-area"><div className="doc">
+        <Letterhead s={s} title="FINAL ACCOUNT STATEMENT" meta={<><div><b>{job.code}</b></div><div>{fmtDate(today())}</div></>} />
+        <div style={{ marginBottom: 12 }}><b>{cust?.name}</b>{cust?.code && <span> · {cust.code}</span>}<div>{job.title}</div><div className="muted">{job.siteAddress || cust?.address}</div></div>
+        <table style={{ width: '100%' }}><tbody>
+          <tr><td>Contract amount</td><td className="num">{money(f.base, s)}</td></tr>
+          {(job.extras || []).map((e) => <tr key={e.id}><td>+ Additional work: {e.description} ({fmtDate(e.date)})</td><td className="num">{money(e.amount, s)}</td></tr>)}
+          {f.credited > 0 && <tr><td>− Credit notes</td><td className="num">−{money(f.credited, s)}</td></tr>}
+          <tr><td><b>Final project value</b></td><td className="num"><b>{money(f.contract, s)}</b></td></tr>
+          {discounts > 0 && <tr><td className="muted">Discounts given on invoices (already deducted)</td><td className="num muted">{money(discounts, s)}</td></tr>}
+        </tbody></table>
+        <h3 style={{ marginTop: 16 }}>Invoices</h3>
+        <table style={{ width: '100%' }}><thead><tr><th>No.</th><th>Date</th><th className="num">Amount</th><th className="num">Balance</th></tr></thead>
+          <tbody>{invoices.map((i) => <tr key={i.id}><td>{i.number}</td><td>{fmtDate(i.date)}</td><td className="num">{money(docTotals(i).total, s)}</td><td className="num">{money(Math.max(0, invoiceBalance(i)), s)}</td></tr>)}
+            {!invoices.length && <tr><td colSpan={4} className="muted">No invoices</td></tr>}</tbody></table>
+        <h3 style={{ marginTop: 16 }}>Payments received</h3>
+        <table style={{ width: '100%' }}><thead><tr><th>Receipt</th><th>Date</th><th>Method</th><th className="num">Amount</th></tr></thead>
+          <tbody>{receipts.map((r) => <tr key={r.id}><td>{r.number} {r.kind === 'advance' ? '(advance)' : ''}</td><td>{fmtDate(r.date)}</td><td>{r.method}{r.chequeNo ? ` ${r.chequeNo}` : ''}</td><td className="num">{money(r.amount, s)}</td></tr>)}
+            {refunds > 0 && <tr><td colSpan={3}>− Refunds paid</td><td className="num">−{money(refunds, s)}</td></tr>}
+            {!receipts.length && <tr><td colSpan={4} className="muted">No payments</td></tr>}</tbody></table>
+        <div className="totals" style={{ marginTop: 14 }}>
+          <div><span>Total received</span><span>{money(f.collected, s)}</span></div>
+          <div className="grand"><span>{f.toCollect > 0.0005 ? 'Balance outstanding' : 'Fully settled'}</span><span>{money(f.toCollect, s)}</span></div>
+        </div>
+        {job.closedAt && <p style={{ marginTop: 12 }}>Closed on {fmtDate(job.closedAt.slice(0, 10))} by {job.closedBy}.</p>}
+      </div></div>
+    </Modal>
   );
 }
