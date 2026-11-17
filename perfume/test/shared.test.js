@@ -112,3 +112,17 @@ test('EAN-13 barcodes', () => {
   assert.equal(isValidEan13(internalEan13(123456)), true);
   assert.equal(cleanScan('٦٢٩١٠٤١٥٠٠٢١٣\r\n'), '6291041500213');
 });
+
+test('demo data barcodes are valid EAN-13 (labels and scanners must read them)', async () => {
+  const { openDb } = await import('../server/db.js');
+  const { createApp } = await import('../server/app.js');
+  const { seedDemo } = await import('../server/seed-demo.js');
+  const { isValidEan13 } = await import('../shared/barcode.js');
+  const db = await openDb({ dataDir: ':memory:' });
+  await createApp(db, {});
+  await db.query("INSERT INTO users (id, name, username, hash, role, branch_id) VALUES ('usr_t','T','t','x','owner','br_main')");
+  await seedDemo(db, 'usr_t');
+  const rows = await db.query('SELECT barcode FROM variants');
+  assert.ok(rows.length > 5);
+  for (const r of rows) assert.ok(isValidEan13(r.barcode), r.barcode);
+});

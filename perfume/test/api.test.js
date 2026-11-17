@@ -297,3 +297,79 @@ test('new products get a scannable in-store barcode automatically', async () => 
   const nx = await owner.post('/barcodes/next');
   assert.notEqual(nx.data.barcode, v.barcode);
 });
+
+test('barcodes: symbology checks, duplicates, auto SKU, and edit permission', async () => {
+  // manual EAN-13 with a wrong check digit is refused; a valid manufacturer barcode is accepted
+  const bad = await owner.post('/products', { name: 'Bad Code', variants: [{ sku: 'BAD-1', barcode: '6291041500214', symbology: 'ean13', retailPrice: 1000 }] });
+  assert.equal(bad.status, 400); assert.match(bad.data.error, /check digit/);
+  const ok = await owner.post('/products', { name: 'Musk Al Tahara', variants: [{ sizeMl: 30, barcode: '6291041500213', retailPrice: 3000 }, { sizeMl: 10, retailPrice: 1500 }, { sizeMl: 5, barcode: 'MUSK-5ML', symbology: 'code39', retailPrice: 900 }] });
+  assert.equal(ok.status, 200, JSON.stringify(ok.data));
+  const vs = await db.query('SELECT id, sku, barcode, symbology, size_ml FROM variants WHERE product_id = $1 ORDER BY size_ml DESC', [ok.data.id]);
+  assert.deepEqual(vs.map((v) => v.symbology), ['ean13', 'ean13', 'code39']);
+  assert.equal(new Set(vs.map((v) => v.barcode)).size, 3, 'every size has its own barcode');
+  assert.equal(new Set(vs.map((v) => v.sku)).size, 3, 'every size has its own SKU');
+  assert.match(vs[0].sku, /^MUSKALTA-30/);
+  // duplicate barcode refused
+  const dup = await owner.post('/products', { name: 'Copy', variants: [{ sku: 'COPY-1', barcode: '6291041500213', retailPrice: 1000 }] });
+  assert.equal(dup.status, 409); assert.match(dup.data.error, /already used/);
+  // a manager allowed to edit products still cannot change an existing barcode
+  const mgr = await db.one("SELECT id FROM users WHERE username = 'manager'");
+  await owner.put(`/users/${mgr.id}/permissions`, { grants: { inventory: { levels: ['view', 'edit'] } } });
+  const { c } = await login('manager', 'Demo1234', 'manager');
+  const body = { name: 'Musk Al Tahara', variants: vs.map((v) => ({ id: v.id, sku: v.sku, barcode: v.barcode, sizeMl: v.size_ml, retailPrice: 3000 })) };
+  assert.equal((await c.put(`/products/${ok.data.id}`, body)).status, 200, 'same barcodes: allowed');
+  body.variants[0].barcode = '2999999999995';
+  const denied = await c.put(`/products/${ok.data.id}`, body);
+  assert.equal(denied.status, 403); assert.match(denied.data.error, /manage/);
+  assert.equal((await owner.put(`/products/${ok.data.id}`, body)).status, 200, 'owner may change it');
+});
+
+test('barcodes: lookup, blocked stock cannot be sold, printers, templates and print history with reprint control', async () => {
+  const look = await owner.get('/barcodes/lookup?code=' + (await db.one("SELECT barcode FROM variants WHERE id = 'var_demo_10_100'")).barcode);
+  assert.equal(look.data.sku, 'LAT-KHAMRA-100');
+  assert.ok(look.data.stock.length > 0);
+  assert.equal(look.data.sellable, true);
+  assert.equal((await owner.post('/variants/var_demo_10_100/block', { blocked: true })).status, 400, 'reason required');
+  await owner.post('/variants/var_demo_10_100/block', { blocked: true, reason: 'Tester bottles' });
+  const q = await owner.post('/pos/quote', { branchId: 'br_main', items: [{ variantId: 'var_demo_10_100', qty: 1 }] });
+  assert.equal(q.status, 409); assert.equal(q.data.code, 'sale_blocked');
+  await owner.post('/variants/var_demo_10_100/block', { blocked: false });
+
+  // printers: only "manage" may configure; a new printer is never reported as connected
+  const { c: cash } = await login('cashier');
+  assert.equal((await cash.post('/printers', { name: 'X', connection: 'browser', language: 'driver' })).status, 403);
+  assert.equal((await owner.post('/printers', { name: 'LAN', connection: 'network', language: 'driver', host: '192.168.1.50' })).status, 400);
+  const pr = await owner.post('/printers', { name: 'Xprinter counter', model: 'Xprinter XP-365B', connection: 'network', language: 'tspl', host: '192.168.1.50', port: 9100, labelWidthMm: 38, labelHeightMm: 25 });
+  assert.equal(pr.status, 200);
+  let list = (await owner.get('/printers')).data;
+  assert.equal(list[0].is_default, true, 'first printer becomes default');
+  assert.equal(list[0].last_test_ok, null, 'not verified until tested');
+  await owner.post(`/printers/${pr.data.id}/test-result`, { method: 'agent_probe', ok: true, detail: 'reachable' });
+  assert.equal((await owner.get('/printers')).data[0].last_test_ok, true);
+  await owner.put(`/printers/${pr.data.id}`, { name: 'Xprinter counter', connection: 'network', language: 'tspl', host: '192.168.1.60', port: 9100 });
+  assert.equal((await owner.get('/printers')).data[0].last_test_ok, null, 'new address → must be tested again');
+
+  // templates
+  const tpls = (await owner.get('/label-templates')).data;
+  assert.ok(tpls.some((t) => t.id === 'tpl_small') && tpls.some((t) => t.id === 'tpl_large'));
+  const t = await owner.post('/label-templates', { ...tpls.find((x) => x.id === 'tpl_small'), name: 'Shelf price 40x30', widthMm: 40, heightMm: 30 });
+  assert.equal(t.status, 200);
+  assert.equal((await owner.put('/label-templates/tpl_small', { ...tpls[0], name: 'x' })).status, 400, 'built-ins are read-only');
+
+  // print 50 labels for one perfume in one action, then reprint
+  const cashierId = (await db.one("SELECT id FROM users WHERE username = 'cashier'")).id;
+  assert.equal((await cash.post('/print-jobs', { items: [{ variantId: 'var_demo_10_100', copies: 1 }] })).status, 403, 'staff print only when authorised');
+  await owner.put(`/users/${cashierId}/permissions`, { grants: { barcodes: { levels: ['view', 'create'] } } });
+  const job = await cash.post('/print-jobs', { printerId: pr.data.id, templateId: 'tpl_small', source: 'product', items: [{ variantId: 'var_demo_10_100', copies: 50 }] });
+  assert.equal(job.status, 200, JSON.stringify(job.data));
+  await cash.post(`/print-jobs/${job.data.id}/result`, { status: 'sent', detail: 'agent confirmed 4096 bytes' });
+  assert.equal((await cash.post(`/print-jobs/${job.data.id}/result`, { status: 'failed' })).status, 409, 'result recorded once');
+  const hist = (await owner.get('/print-jobs?search=khamrah')).data;
+  assert.equal(hist[0].labels, 50); assert.equal(hist[0].lines[0].sku, 'LAT-KHAMRA-100'); assert.equal(hist[0].user_name, 'Fatma (cashier, demo)'); assert.equal(hist[0].status, 'sent');
+  assert.equal((await cash.post('/print-jobs', { reprintOf: job.data.id, reason: 'jammed', items: [{ variantId: 'var_demo_10_100', copies: 5 }] })).status, 403, 'cashier cannot reprint from history');
+  assert.equal((await owner.post('/print-jobs', { reprintOf: job.data.id, items: [{ variantId: 'var_demo_10_100', copies: 5 }] })).status, 400, 'reason required');
+  const re = await owner.post('/print-jobs', { reprintOf: job.data.id, reason: 'Labels jammed', source: 'reprint', items: [{ variantId: 'var_demo_10_100', copies: 5 }] });
+  assert.equal(re.status, 200);
+  assert.equal((await owner.get('/print-jobs')).data.find((j) => j.id === job.data.id).reprints, 1);
+  assert.equal((await cash.get('/print-jobs')).status, 200, 'cashier sees history (view)');
+});

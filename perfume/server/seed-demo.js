@@ -8,6 +8,10 @@ import * as inv from './services/inventory.js';
 import * as sales from './services/sales.js';
 import * as pur from './services/purchases.js';
 import { createExpense } from './services/finance.js';
+import { ean13CheckDigit } from '../shared/barcode.js';
+
+// demo barcodes: 629 (GS1 Oman range style) + product no + size, with a correct EAN-13 check digit
+const demoEan = (n, size) => { const d = String(629000000000 + n * 1000 + (size || 999)); return d + ean13CheckDigit(d); };
 
 const CATALOG = [
   // brand, product, category, gender, concentration, [[size, retail OMR, cost OMR, min, qtyMain, qtyMct]]
@@ -49,7 +53,7 @@ export async function seedDemo(db, ownerId) {
         const vid = `var_demo_${n}_${size || 'x'}`;
         const sku = `${brand.slice(0, 3).toUpperCase()}-${name.replace(/\W+/g, '').slice(0, 6).toUpperCase()}-${size || 'STD'}`;
         await q(`INSERT INTO variants (id, product_id, size_ml, label, sku, barcode, retail_price, web_price, wholesale_price, min_stock) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-          [vid, pid, size, size ? `${size}ml` : null, sku, String(6290000000000 + n * 1000 + (size || 999)), O(price), O(price), O(price * 0.85), min]);
+          [vid, pid, size, size ? `${size}ml` : null, sku, demoEan(n, size), O(price), O(price), O(price * 0.85), min]);
         for (const [br, qty] of [['br_main', qMain], ['br_mct', qMct]]) {
           if (!qty) continue;
           await inv.receiveIntoStock(q, { branchId: br, variantId: vid, qty, unitCost: O(cost), reason: 'opening', refType: 'opening', userId: ownerId });

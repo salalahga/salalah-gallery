@@ -126,7 +126,7 @@ export async function stockList(q, { branchId, search, lowOnly, includeInactive 
   if (!includeInactive) where.push('v.active AND p.active');
   if (search) { p.push('%' + search.toLowerCase() + '%'); where.push(`(lower(p.name) LIKE $${p.length} OR lower(COALESCE(b.name,'')) LIKE $${p.length} OR lower(v.sku) LIKE $${p.length} OR v.barcode = $${p.length + 1} OR lower(COALESCE(p.name_ar,'')) LIKE $${p.length})`); p.push(search); }
   const branchJoin = branchId ? (p.push(branchId), `AND s.branch_id = $${p.length}`) : '';
-  const rows = await q(`SELECT v.id, v.sku, v.barcode, v.size_ml, v.label, v.retail_price, v.wholesale_price, v.web_price, v.avg_cost, v.vat_rate_bp, v.min_stock, v.active,
+  const rows = await q(`SELECT v.id, v.sku, v.barcode, v.size_ml, v.label, v.retail_price, v.wholesale_price, v.web_price, v.avg_cost, v.vat_rate_bp, v.min_stock, v.active, v.symbology, v.compare_price AS original_price, v.sale_blocked, v.block_reason,
       p.id AS product_id, p.name, p.name_ar, p.image_url, p.gender, p.concentration, p.web_visible, p.is_test, b.id AS brand_id, b.name AS brand, c.id AS category_id, c.name AS category,
       COALESCE(SUM(s.qty),0)::int AS qty
     FROM variants v JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id LEFT JOIN categories c ON c.id = p.category_id

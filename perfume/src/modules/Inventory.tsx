@@ -3,6 +3,8 @@ import { api, qs } from '../core/api';
 import { t } from '../core/i18n';
 import { money, parseMoney, useSession, variantName, dateTime, date } from '../core/session';
 import { LabelPrinter, type LabelItem } from '../components/Labels';
+import { ScanBox, useScanner, beep } from '../core/scanner';
+import { SYMBOLOGIES } from '../../shared/barcode.js';
 import { Bottle, Card, Empty, Field, Loading, Modal, PageHead, Status, Tabs, TestBadge, toast, useAction, useData, download } from '../components/ui';
 
 type Tab = 'stock' | 'transfers' | 'counts' | 'valuation' | 'expiry';
@@ -34,7 +36,7 @@ function Stock() {
   const [adj, setAdj] = useState<any>(null);
   const [moves, setMoves] = useState<any>(null);
   const [labels, setLabels] = useState<LabelItem[] | null>(null);
-  const toLabel = (v: any, copies = 1): LabelItem => ({ id: v.id, barcode: v.barcode, sku: v.sku, name: v.name, brand: v.brand, label: v.label, size_ml: v.size_ml, retail_price: v.retail_price, copies });
+  const toLabel = (v: any, copies = 1): LabelItem => ({ id: v.id, barcode: v.barcode, symbology: v.symbology, original_price: v.original_price, sku: v.sku, name: v.name, brand: v.brand, label: v.label, size_ml: v.size_ml, retail_price: v.retail_price, copies });
   return (
     <>
       <div className="card row" style={{ marginBottom: 12 }}>
@@ -86,14 +88,14 @@ export function ProductForm({ id, onClose, onDone, barcode }: { id: string | nul
   const { data: existing } = useData<any>(id ? `/products/${id}` : null);
   const [p, setP] = useState<any>(null);
   const { busy, run } = useAction();
-  const blankVariant = () => ({ sizeMl: '', label: '', sku: '', barcode: '', retailPrice: '', webPrice: '', wholesalePrice: '', vatRateBp: me.settings.tax.defaultRateBp, minStock: 2, openingQty: '', unitCost: '', batchNo: '', expiryDate: '' });
+  const blankVariant = () => ({ sizeMl: '', label: '', sku: '', barcode: '', symbology: 'auto', comparePrice: '', retailPrice: '', webPrice: '', wholesalePrice: '', vatRateBp: me.settings.tax.defaultRateBp, minStock: 2, openingQty: '', unitCost: '', batchNo: '', expiryDate: '' });
   if (!p) {
     if (id && !existing) return <Modal title="Product" onClose={onClose}><Loading /></Modal>;
     const e = existing;
     setP(e ? {
       name: e.name, nameAr: e.name_ar || '', brandId: e.brand_id || '', categoryId: e.category_id || '', gender: e.gender || '', concentration: e.concentration || '', description: e.description || '', descriptionAr: e.description_ar || '',
       notesTop: e.notes_top || '', notesHeart: e.notes_heart || '', notesBase: e.notes_base || '', imageUrl: e.image_url || '', webVisible: e.web_visible, active: e.active,
-      variants: e.variants.map((v: any) => ({ id: v.id, sizeMl: v.size_ml ?? '', label: v.label || '', sku: v.sku, barcode: v.barcode || '', retailPrice: money(v.retail_price), webPrice: v.web_price != null ? money(v.web_price) : '', wholesalePrice: v.wholesale_price != null ? money(v.wholesale_price) : '', vatRateBp: v.vat_rate_bp, minStock: v.min_stock, active: v.active })),
+      variants: e.variants.map((v: any) => ({ id: v.id, sizeMl: v.size_ml ?? '', label: v.label || '', sku: v.sku, barcode: v.barcode || '', symbology: v.symbology || 'auto', comparePrice: v.compare_price != null ? money(v.compare_price) : '', retailPrice: money(v.retail_price), webPrice: v.web_price != null ? money(v.web_price) : '', wholesalePrice: v.wholesale_price != null ? money(v.wholesale_price) : '', vatRateBp: v.vat_rate_bp, minStock: v.min_stock, active: v.active })),
     } : { name: '', nameAr: '', brandId: '', categoryId: '', gender: 'unisex', concentration: 'Eau de Parfum', description: '', descriptionAr: '', notesTop: '', notesHeart: '', notesBase: '', imageUrl: '', webVisible: true, active: true, variants: [{ ...blankVariant(), barcode: barcode || '' }] });
     return null;
   }
@@ -107,14 +109,14 @@ export function ProductForm({ id, onClose, onDone, barcode }: { id: string | nul
   const addBrand = async () => { const n = prompt('Brand name'); if (n) { const r = await api.post('/brands', { name: n }); await rb(); set('brandId', r.id); } };
   const addCat = async () => { const n = prompt('Category name'); if (n) { const r = await api.post('/categories', { name: n }); await rc(); set('categoryId', r.id); } };
   const save = () => run(async () => {
-    const body = { ...p, branchId: me.user.branchId || 'br_main', variants: p.variants.map((v: any) => ({ ...v, retailPrice: parseMoney(v.retailPrice), webPrice: v.webPrice ? parseMoney(v.webPrice) : null, wholesalePrice: v.wholesalePrice ? parseMoney(v.wholesalePrice) : null, unitCost: v.unitCost ? parseMoney(v.unitCost) : 0, openingQty: v.openingQty ? Number(v.openingQty) : 0, sizeMl: v.sizeMl ? Number(v.sizeMl) : null, vatRateBp: Number(v.vatRateBp), minStock: Number(v.minStock) })) };
+    const body = { ...p, branchId: me.user.branchId || 'br_main', variants: p.variants.map((v: any) => ({ ...v, retailPrice: parseMoney(v.retailPrice), comparePrice: v.comparePrice ? parseMoney(v.comparePrice) : null, webPrice: v.webPrice ? parseMoney(v.webPrice) : null, wholesalePrice: v.wholesalePrice ? parseMoney(v.wholesalePrice) : null, unitCost: v.unitCost ? parseMoney(v.unitCost) : 0, openingQty: v.openingQty ? Number(v.openingQty) : 0, sizeMl: v.sizeMl ? Number(v.sizeMl) : null, vatRateBp: Number(v.vatRateBp), minStock: Number(v.minStock) })) };
     const r = id ? await api.put(`/products/${id}`, body) : await api.post('/products', body);
     // offer barcode labels straight away (copies = opening stock for new products)
     const saved = await api.get(`/products/${id || r.id}`);
     const brand = brands?.find((b) => b.id === p.brandId)?.name;
     setPrintItems(saved.variants.map((v: any) => {
       const typed = p.variants.find((x: any) => x.sku === v.sku);
-      return { id: v.id, barcode: v.barcode, sku: v.sku, name: saved.name, brand, label: v.label, size_ml: v.size_ml, retail_price: v.retail_price, copies: Number(typed?.openingQty) || 1 };
+      return { id: v.id, barcode: v.barcode, symbology: v.symbology, original_price: v.compare_price, sku: v.sku, name: saved.name, brand, label: v.label, size_ml: v.size_ml, retail_price: v.retail_price, copies: Number(typed?.openingQty) || 1 };
     }));
     return r;
   }, 'Product saved');
@@ -148,14 +150,16 @@ export function ProductForm({ id, onClose, onDone, barcode }: { id: string | nul
       </div>
       <h3 style={{ marginTop: 14 }}>Sizes & prices (OMR, {me.settings.tax.pricesIncludeVat ? 'VAT included' : 'before VAT'})</h3>
       <div className="tablewrap"><table className="t">
-        <thead><tr><th>Size ml</th><th>Label</th><th>SKU</th><th>Barcode</th><th>Retail</th><th>Website</th><th>Wholesale</th><th>VAT bp</th><th>Min</th>{!id && can('inventory', 'manage') && <><th>Opening qty</th><th>Unit cost</th><th>Batch</th><th>Expiry</th></>}</tr></thead>
+        <thead><tr><th>Size ml</th><th>Label</th><th>SKU</th><th>Barcode</th><th>Type</th><th>Retail</th><th title="Shown crossed out on the label">Original</th><th>Website</th><th>Wholesale</th><th>VAT bp</th><th>Min</th>{!id && can('inventory', 'manage') && <><th>Opening qty</th><th>Unit cost</th><th>Batch</th><th>Expiry</th></>}</tr></thead>
         <tbody>{p.variants.map((v: any, i: number) => (
           <tr key={i}>
             <td><input value={v.sizeMl} onChange={(e) => setV(i, 'sizeMl', e.target.value)} style={{ width: 64 }} /></td>
             <td><input value={v.label} onChange={(e) => setV(i, 'label', e.target.value)} style={{ width: 80 }} /></td>
             <td><input value={v.sku} onChange={(e) => setV(i, 'sku', e.target.value)} style={{ width: 120 }} /></td>
-            <td style={{ whiteSpace: 'nowrap' }}><input value={v.barcode} onChange={(e) => setV(i, 'barcode', e.target.value)} placeholder="scan / auto" style={{ width: 130 }} /> <button className="btn ghost sm" title="Generate an in-store barcode" onClick={() => genBarcode(i)}>Generate</button></td>
+            <td style={{ whiteSpace: 'nowrap' }}>{v.id && !can('barcodes', 'manage') ? <span title="Only the owner/admin can change an existing barcode">{v.barcode} 🔒</span> : <><input value={v.barcode} onChange={(e) => setV(i, 'barcode', e.target.value)} placeholder="scan / auto" style={{ width: 130 }} /> <button className="btn ghost sm" title="Generate an in-store barcode" onClick={() => genBarcode(i)}>Generate</button></>}</td>
+            <td><select value={v.symbology} disabled={!!v.id && !can('barcodes', 'manage')} onChange={(e) => setV(i, 'symbology', e.target.value)} style={{ width: 110 }}><option value="auto">Auto</option>{Object.entries(SYMBOLOGIES).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></td>
             <td><input value={v.retailPrice} onChange={(e) => setV(i, 'retailPrice', e.target.value)} style={{ width: 80 }} /></td>
+            <td><input value={v.comparePrice} onChange={(e) => setV(i, 'comparePrice', e.target.value)} style={{ width: 80 }} placeholder="—" /></td>
             <td><input value={v.webPrice} onChange={(e) => setV(i, 'webPrice', e.target.value)} style={{ width: 80 }} /></td>
             <td><input value={v.wholesalePrice} onChange={(e) => setV(i, 'wholesalePrice', e.target.value)} style={{ width: 80 }} /></td>
             <td><input value={v.vatRateBp} onChange={(e) => setV(i, 'vatRateBp', e.target.value)} style={{ width: 60 }} /></td>
@@ -170,7 +174,7 @@ export function ProductForm({ id, onClose, onDone, barcode }: { id: string | nul
         ))}</tbody>
       </table></div>
       <button className="btn sm" onClick={() => set('variants', [...p.variants, blankVariant()])}>+ Size</button>
-      <div className="small muted" style={{ marginTop: 6 }}>Barcode: scan the code printed on the perfume box, or leave it empty and an in-store barcode is created automatically. Labels can be printed right after saving.</div>
+      <div className="small muted" style={{ marginTop: 6 }}>Barcode: scan the code printed on the perfume box, or leave it empty and an in-store barcode is created automatically. Every size gets its own barcode and SKU; duplicates are refused. Labels can be printed right after saving.</div>
       <div className="small muted" style={{ marginTop: 6 }}>VAT is in basis points: 500 = 5 %. Opening stock goes to your branch and is booked at the unit cost.</div>
     </Modal>
   );
@@ -228,9 +232,19 @@ function TransferForm({ branches, onClose, onDone }: { branches: any[]; onClose:
   const [lines, setLines] = useState<Record<string, number>>({});
   const { data: stock } = useData<any[]>('/inventory' + qs({ branchId: from }), [from]);
   const { busy, run } = useAction();
+  const [scanMsg, setScanMsg] = useState('');
+  const onScan = (code: string) => {
+    const s = (stock || []).find((x) => x.barcode === code || x.sku.toLowerCase() === code.toLowerCase());
+    if (!s) { beep(false); return setScanMsg(`${code}: not found in this branch`); }
+    const n = (lines[s.id] || 0) + 1;
+    if (n > s.qty) { beep(false); return setScanMsg(`${variantName(s)}: only ${s.qty} in stock`); }
+    beep(true); setScanMsg(`${variantName(s)} × ${n}`); setLines({ ...lines, [s.id]: n });
+  };
+  useScanner(onScan);
   return (
     <Modal wide title="Transfer stock between branches" onClose={onClose} footer={<button className="btn primary" disabled={busy} onClick={() => run(() => api.post('/inventory/transfer', { fromBranch: from, toBranch: to, lines: Object.entries(lines).filter(([, q]) => q > 0).map(([variantId, qty]) => ({ variantId, qty })) }), 'Transferred').then((r) => r && onDone())}>Transfer</button>}>
       <div className="row"><Field label="From"><select value={from} onChange={(e) => setFrom(e.target.value)}>{branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field><Field label="To"><select value={to} onChange={(e) => setTo(e.target.value)}><option value="">—</option>{branches.filter((b) => b.id !== from).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field></div>
+      <div style={{ marginTop: 10 }}><ScanBox onScan={onScan} placeholder="Scan each bottle you are sending" />{scanMsg && <div className="small muted">{scanMsg}</div>}</div>
       <div style={{ maxHeight: 360, overflowY: 'auto', marginTop: 10 }}><table className="t"><tbody>{(stock || []).filter((s) => s.qty > 0).map((s) => <tr key={s.id}><td>{variantName(s)}</td><td className="num muted">{s.qty} available</td><td><input type="number" min={0} max={s.qty} value={lines[s.id] || ''} onChange={(e) => setLines({ ...lines, [s.id]: Math.min(s.qty, Number(e.target.value)) })} style={{ width: 80 }} /></td></tr>)}</tbody></table></div>
     </Modal>
   );
@@ -258,10 +272,19 @@ function CountSheet({ id, onClose }: { id: string; onClose: () => void }) {
   const { data } = useData<any>(`/inventory/counts/${id}`);
   const [counts, setCounts] = useState<Record<string, string>>({});
   const { busy, run } = useAction();
+  const [scanMsg, setScanMsg] = useState('');
+  const onScan = (code: string) => {
+    const l = data?.lines.find((x: any) => x.barcode === code || x.sku.toLowerCase() === code.toLowerCase());
+    if (!l || data.status !== 'open') { beep(false); return setScanMsg(l ? 'This count is already posted' : `${code}: not part of this count`); }
+    const n = Number(counts[l.variant_id] ?? l.counted_qty ?? 0) + 1;
+    beep(true); setScanMsg(`${variantName(l)}: counted ${n}`); setCounts({ ...counts, [l.variant_id]: String(n) });
+  };
+  useScanner(onScan, !!data);
   if (!data) return <Modal title="Stock count" onClose={onClose}><Loading /></Modal>;
   const open = data.status === 'open';
   return (
     <Modal wide title={`Stock count ${data.number}`} onClose={onClose} footer={open && can('inventory', 'manage') ? <button className="btn primary" disabled={busy} onClick={() => run(() => api.post(`/inventory/counts/${id}/post`, { counts }), 'Count posted').then((r) => r && onClose())}>Post differences</button> : <button className="btn" onClick={() => window.print()}>Print</button>}>
+      {open && <div style={{ marginBottom: 10 }}><ScanBox onScan={onScan} placeholder="Scan every bottle on the shelf — each scan counts one" />{scanMsg && <div className="small muted">{scanMsg}</div>}</div>}
       <table className="t"><thead><tr><th>Product</th><th>SKU</th><th className="num">System</th><th>Counted</th><th className="num">Difference</th></tr></thead>
         <tbody>{data.lines.map((l: any) => { const c = counts[l.variant_id] ?? (l.counted_qty ?? ''); const d = c === '' ? null : Number(c) - l.system_qty; return (
           <tr key={l.variant_id}><td>{variantName(l)}</td><td className="small">{l.sku}</td><td className="num">{l.system_qty}</td><td>{open ? <input value={c} onChange={(e) => setCounts({ ...counts, [l.variant_id]: e.target.value.replace(/[^\d]/g, '') })} style={{ width: 80 }} inputMode="numeric" /> : l.counted_qty}</td><td className={'num ' + (d ? (d < 0 ? 'bad' : 'ok') : '')}>{d ?? ''}</td></tr>

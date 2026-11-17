@@ -20,6 +20,7 @@ const P: Record<string, string> = {
   menu: 'M3 6h18M3 12h18M3 18h18',
   online: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zM2 12h20M12 2a15 15 0 0 1 0 20 15 15 0 0 1 0-20',
   clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20zm0-15v5l3 3',
+  barcode: 'M3 5v14M6 5v14M10 5v14M13 5v14M17 5v14M21 5v14M8 5v14M15 5v14',
   home: 'M3 11l9-8 9 8v10a1 1 0 0 1-1 1h-5v-7h-6v7H4a1 1 0 0 1-1-1z',
 };
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {

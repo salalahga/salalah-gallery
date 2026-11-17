@@ -113,6 +113,22 @@ Permission levels per area: **view, create, edit, approve, manage, export**. Eve
 | 20 | Security | ✅ See section 4. Backups: use PostgreSQL managed backups or `pg_dump` (see Deployment) |
 | 21 | Design, languages | ✅ Black/gold/white, mobile-first, EN/AR (RTL)/ML. Translations cover navigation and key labels; full screen-by-screen translation is ongoing |
 
+## 5b. Barcodes & label printing
+
+- **Every size is its own product variant** with a unique SKU (auto: brand-name-size) and a unique barcode. Leave the barcode empty and an in-store EAN-13 (`29…` prefix + check digit) is created. Supported: EAN-13, EAN-8, Code 128, Code 39, QR on labels. Check digits are validated, duplicates are refused, and changing an existing barcode needs **Barcodes → manage** (owner/admin).
+- **Barcodes & labels screen** (`#/barcodes`): bulk printing (scan or search, copies per product), scan & verify (product, photo, price, stock per branch, batches, block/unblock from sale), printers, label designer (small/medium/large built-ins, copies editable: fields, font sizes, alignment, barcode type/height/thickness, QR content, live preview), printing history with authorised reprints (reason recorded), setup guide.
+- **Where scanning works**: POS (adds to cart, repeat scan = +1, shows photo/size/price/stock, refuses no-stock and blocked items), purchase receiving (scan each bottle, then labels print with the batch number), stock counts (each scan counts one), transfers, supplier returns, sales returns (checks the bottle was on that receipt).
+- **Printers**: “browser print” works with any printer that has a driver (label size set by `@page`, so labels never come out on A4). Raw printing (ZPL for Zebra; TSPL for TSC/Xprinter/Gprinter/HPRT/Rongta; ESC/POS for receipt printers) goes through the **print agent** on the shop computer, for USB, Bluetooth (paired in the OS) and network (IP:9100) printers.
+- **Honest status**: a printer is shown as verified only after the agent reached it, or the user confirmed a test label printed correctly. Each print job is stored as `sent` (agent delivered it), `dialog_opened` (browser print window opened) or `failed` — never “printed” by assumption.
+
+### Print agent (only for raw ZPL/TSPL/ESC-POS printing)
+```
+# on the shop computer, Node.js 18+ installed
+node agent/print-agent.js            # shows a pairing code, listens on 127.0.0.1:9333 only
+ALLOWED_ORIGINS=https://your-shop.example node agent/print-agent.js   # if the app runs on another address
+```
+Enter the pairing code in Barcodes → Printers → “Print agent on this computer”. Windows USB/Bluetooth printers: share the printer (e.g. `LABEL`) and use that share name. Mac/Linux: use the CUPS queue name.
+
 ## 6. Integration plan (Phase 2 / 3)
 
 The **Settings → Integrations** screen shows the honest status of each integration.

@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ScanBox, useScanner, beep } from '../core/scanner';
 import { api, qs } from '../core/api';
 import { t } from '../core/i18n';
 import { money, parseMoney, useSession, dateTime, monthStart, today, variantName } from '../core/session';
@@ -115,6 +116,14 @@ function RefundDlg({ sale, cancel, onClose, onDone }: { sale: any; cancel: boole
   const [method, setMethod] = useState(sale.payments.find((p: any) => p.direction === 'in')?.method || 'cash');
   const [restock, setRestock] = useState(true);
   const { busy, run } = useAction();
+  const [scanMsg, setScanMsg] = useState('');
+  const onScan = (code: string) => {
+    if (cancel) return;
+    const l = sale.lines.find((x: any) => (x.barcode === code || x.sku.toLowerCase() === code.toLowerCase()) && (qty[x.id] || 0) < x.qty - x.refunded_qty);
+    if (!l) { beep(false); return setScanMsg(sale.lines.some((x: any) => x.barcode === code) ? `${code}: all of these are already being returned` : `${code}: this bottle was not sold on this receipt`); }
+    beep(true); setScanMsg(`${variantName(l)}: returning ${(qty[l.id] || 0) + 1}`); setQty({ ...qty, [l.id]: (qty[l.id] || 0) + 1 });
+  };
+  useScanner(onScan, !cancel);
   const go2 = () => run(async () => {
     const body = cancel ? { reason, method, restock } : { reason, method, restock, lines: Object.entries(qty).filter(([, n]) => n > 0).map(([saleLineId, n]) => ({ saleLineId, qty: n })) };
     const r = await api.post(`/sales/${sale.id}/${cancel ? 'cancel' : 'refund'}`, body);
@@ -124,6 +133,7 @@ function RefundDlg({ sale, cancel, onClose, onDone }: { sale: any; cancel: boole
     <Modal title={cancel ? 'Cancel sale' : 'Refund / return'} onClose={onClose} footer={<button className="btn danger" disabled={busy || !reason} onClick={go2}>{can('pos', 'approve') ? (cancel ? 'Cancel sale' : 'Refund now') : 'Request approval'}</button>}>
       <div className="col">
         {!can('pos', 'approve') && <div className="alert">You need a manager's approval. Your request will be listed in Approvals.</div>}
+        {!cancel && <div><ScanBox onScan={onScan} placeholder="Scan the returned bottle to check it was sold on this receipt" />{scanMsg && <div className="small muted">{scanMsg}</div>}</div>}
         {!cancel && <table className="t"><tbody>{sale.lines.map((l: any) => <tr key={l.id}><td>{variantName(l)}</td><td className="small muted">sold {l.qty}{l.refunded_qty ? `, returned ${l.refunded_qty}` : ''}</td><td><input type="number" min={0} max={l.qty - l.refunded_qty} value={qty[l.id]} onChange={(e) => setQty({ ...qty, [l.id]: Math.max(0, Math.min(l.qty - l.refunded_qty, Number(e.target.value))) })} style={{ width: 70 }} /></td></tr>)}</tbody></table>}
         {sale.status !== 'pending' && <>
           <Field label="Money goes back by"><select value={method} onChange={(e) => setMethod(e.target.value)}>{['cash', 'card', 'bank_transfer', 'wallet', 'payment_link', 'loyalty'].map((m) => <option key={m} value={m}>{m.replace('_', ' ')}</option>)}</select></Field>

@@ -8,7 +8,7 @@ export const MODULES = {
   dashboard: 'Dashboard', pos: 'POS & till', sales: 'Sales & orders', inventory: 'Inventory', purchases: 'Purchases & suppliers',
   promotions: 'Offers & promotions', customers: 'Customers (CRM)', finance: 'Finance & accounting', payments: 'Payments',
   reports: 'Reports & exports', hr: 'HR & payroll', staff: 'Staff, attendance & leave', branches: 'Branches', online: 'Online store',
-  whatsapp: 'WhatsApp', marketing: 'Social & campaigns', assistant: 'AI assistant', audit: 'Audit log', users: 'Users & logins', settings: 'Business settings',
+  barcodes: 'Barcodes & label printing', whatsapp: 'WhatsApp', marketing: 'Social & campaigns', assistant: 'AI assistant', audit: 'Audit log', users: 'Users & logins', settings: 'Business settings',
 };
 export const MODULE_KEYS = Object.keys(MODULES);
 
@@ -22,7 +22,7 @@ export const ROLE_DEFAULTS = {
   owner: Object.fromEntries(MODULE_KEYS.map((m) => [m, ALL])),
   admin: Object.fromEntries(MODULE_KEYS.map((m) => [m, ALL])),
   // Managers start with operational monitoring only. The owner widens this per manager.
-  manager: { dashboard: V, sales: V, pos: V, inventory: V, purchases: V, promotions: V, customers: V, staff: V, branches: V, online: V, whatsapp: V, reports: V },
+  manager: { dashboard: V, sales: V, pos: V, inventory: V, purchases: V, promotions: V, customers: V, staff: V, branches: V, online: V, whatsapp: V, reports: V, barcodes: VC },
   accountant: { dashboard: V, finance: ALL, payments: ALL, reports: VX, purchases: ['view', 'create', 'edit'], sales: V, inventory: V, customers: V, assistant: V },
   hr: { dashboard: V, hr: ALL, staff: ALL, reports: VX },
   cashier: { pos: VC, customers: VC, inventory: V, promotions: V }, // cashiers see only their own sales
@@ -32,11 +32,11 @@ export const ROLE_DEFAULTS = {
 // What a role can never be granted, whatever the owner saves.
 export const ROLE_CEILING = {
   owner: null, admin: null,
-  manager: { users: [], settings: [] },
-  accountant: { users: [], settings: [] },
-  hr: { users: [], settings: [], finance: [] },
-  cashier: { users: [], settings: [], finance: [], hr: [], audit: [] },
-  staff: { users: [], settings: [], finance: [], hr: [], audit: [], reports: [] },
+  manager: { users: [], settings: [], barcodes: ['view', 'create', 'approve', 'export'] },
+  accountant: { users: [], settings: [], barcodes: ['view'] },
+  hr: { users: [], settings: [], finance: [], barcodes: [] },
+  cashier: { users: [], settings: [], finance: [], hr: [], audit: [], barcodes: ['view', 'create'] },
+  staff: { users: [], settings: [], finance: [], hr: [], audit: [], reports: [], barcodes: ['view', 'create'] },
 };
 
 /** Effective permissions: { module: Set(levels) } */

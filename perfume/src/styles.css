@@ -332,3 +332,13 @@ input:disabled, select:disabled { background: var(--paper-2); color: var(--muted
     background: linear-gradient(135deg, #e9cf95 0%, #c9a061 45%, #a87a3c 100%); box-shadow: var(--shadow-lg); }
   .page:has(.cartfab) { padding-bottom: 90px; }
 }
+.scanbox { display: flex; align-items: center; gap: 8px; background: var(--ink); color: var(--gold-2); border-radius: 999px; padding: 6px 6px 6px 16px; }
+.scanbox input { background: rgba(255,255,255,.06); border-color: rgba(255,255,255,.14); color: #f6ecd8; border-radius: 999px; }
+.scanbox input::placeholder { color: #a4998c; }
+.scanhit { display: flex; gap: 12px; align-items: center; padding: 10px 14px; border-radius: 16px; border: 1px solid var(--line); background: #fff; margin-bottom: 12px; }
+.scanhit.bad { border-color: #f6c6d6; background: var(--blush-soft); }
+.scanhit .big { font-family: var(--serif); font-size: 1.35rem; font-weight: 600; }
+
+/* POS scan card thumbnail */
+.scanbar .scanthumb { width: 38px; height: 46px; flex: none; display: grid; place-items: center; overflow: hidden; }
+.scanbar .scanthumb > * { transform: scale(.55); transform-origin: center; }

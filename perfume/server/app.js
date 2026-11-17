@@ -15,7 +15,8 @@ import { dashboard } from './services/analytics.js';
 import { ask } from './services/assistant.js';
 import { notify, listFor } from './services/notify.js';
 import { ensureBase } from './seed.js';
-import { internalEan13, cleanScan } from '../shared/barcode.js';
+import { internalEan13, cleanScan, detectSymbology, barcodeProblem, SYMBOLOGIES } from '../shared/barcode.js';
+import { BUILTIN_TEMPLATES } from '../shared/labels.js';
 
 const COOKIE = 'pf_session';
 const ROLES = ['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff'];
@@ -389,15 +390,39 @@ export async function createApp(db, { secureCookies = false, setupCode = process
   }));
   const productFields = (b) => [str(b.name, 120), str(b.nameAr, 120), b.brandId || null, b.categoryId || null, str(b.description, 4000), str(b.descriptionAr, 4000), str(b.gender, 20), str(b.concentration, 40),
     str(b.notesTop, 300), str(b.notesHeart, 300), str(b.notesBase, 300), str(b.imageUrl, 400), b.webVisible !== false, b.active !== false];
-  async function saveVariant(q, productId, v, vid) {
-    const vals = [str(v.sku, 40), str(v.barcode, 40), v.sizeMl ? posInt(v.sizeMl, 'size') : null, str(v.label, 40), money(v.retailPrice, 'retail price'), v.wholesalePrice != null && v.wholesalePrice !== '' ? money(v.wholesalePrice) : null,
-      v.webPrice != null && v.webPrice !== '' ? money(v.webPrice) : null, v.vatRateBp == null ? 500 : int(v.vatRateBp), int(v.minStock || 0), !!v.trackExpiry, v.active !== false];
-    must(vals[0], 400, 'Every size needs a SKU');
-    if (vals[1]) vals[1] = cleanScan(vals[1]);
-    // no barcode typed → give it an in-store EAN-13 so every bottle can be scanned and labelled
-    if (!vals[1] && !vid) vals[1] = await nextBarcode(q);
-    if (vid) await q('UPDATE variants SET sku=$1, barcode=$2, size_ml=$3, label=$4, retail_price=$5, wholesale_price=$6, web_price=$7, vat_rate_bp=$8, min_stock=$9, track_expiry=$10, active=$11 WHERE id=$12', [...vals, vid]);
-    else { vid = id('var_'); await q('INSERT INTO variants (sku, barcode, size_ml, label, retail_price, wholesale_price, web_price, vat_rate_bp, min_stock, track_expiry, active, id, product_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)', [...vals, vid, productId]); }
+  async function nextSku(q, b, v) {
+    const slug = (x) => String(x || '').normalize('NFD').replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+    const base = [slug(b.name).slice(0, 8) || 'ITEM', v.sizeMl ? String(v.sizeMl) : slug(v.label).slice(0, 4) || 'STD'].join('-');
+    for (let n = 1; ; n++) { const sku = n === 1 ? base : `${base}-${n}`; if (!(await q.one('SELECT 1 AS x FROM variants WHERE lower(sku) = lower($1)', [sku]))) return sku; }
+  }
+  /**
+   * Each size/variant has its own SKU and barcode. Empty SKU → generated; empty barcode → in-store EAN-13.
+   * A manual barcode is checked against its symbology and for duplicates; changing an existing barcode
+   * needs Barcodes "manage" (owner/admin by default).
+   */
+  async function saveVariant(q, productId, v, vid, req, product) {
+    const before = vid ? await q.one('SELECT barcode, symbology FROM variants WHERE id = $1 AND product_id = $2', [vid, productId]) : null;
+    if (vid) must(before, 404, 'Product size not found');
+    const sku = str(v.sku, 40) || await nextSku(q, product, v);
+    let barcode = v.barcode ? cleanScan(String(v.barcode)).slice(0, 48) : null;
+    let sym = v.symbology && v.symbology !== 'auto' ? String(v.symbology) : null;
+    if (before) {
+      if (!barcode) barcode = before.barcode;
+      const changed = barcode !== before.barcode || (sym && sym !== before.symbology);
+      if (changed) must(can(req.perms, 'barcodes', 'manage'), 403, 'Changing an existing barcode needs the Barcodes "manage" permission (owner / admin)');
+    }
+    if (!barcode) barcode = await nextBarcode(q);
+    sym = sym || detectSymbology(barcode);
+    must(SYMBOLOGIES[sym], 400, 'Unknown barcode type');
+    const problem = barcodeProblem(barcode, sym);
+    if (problem) fail(400, `${sku}: ${problem}`);
+    const dup = await q.one('SELECT sku FROM variants WHERE barcode = $1 AND id <> $2', [barcode, vid || '']);
+    if (dup) fail(409, `Barcode ${barcode} is already used by ${dup.sku}`);
+    const vals = [sku, barcode, v.sizeMl ? posInt(v.sizeMl, 'size') : null, str(v.label, 40), money(v.retailPrice, 'retail price'), v.wholesalePrice != null && v.wholesalePrice !== '' ? money(v.wholesalePrice) : null,
+      v.webPrice != null && v.webPrice !== '' ? money(v.webPrice) : null, v.vatRateBp == null ? 500 : int(v.vatRateBp), int(v.minStock || 0), !!v.trackExpiry, v.active !== false, sym,
+      v.comparePrice != null && v.comparePrice !== '' ? money(v.comparePrice, 'original price') : null];
+    if (vid) await q('UPDATE variants SET sku=$1, barcode=$2, size_ml=$3, label=$4, retail_price=$5, wholesale_price=$6, web_price=$7, vat_rate_bp=$8, min_stock=$9, track_expiry=$10, active=$11, symbology=$12, compare_price=$13 WHERE id=$14', [...vals, vid]);
+    else { vid = id('var_'); await q('INSERT INTO variants (sku, barcode, size_ml, label, retail_price, wholesale_price, web_price, vat_rate_bp, min_stock, track_expiry, active, symbology, compare_price, id, product_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)', [...vals, vid, productId]); }
     return vid;
   }
   async function nextBarcode(q) {
@@ -408,12 +433,173 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     }
   }
   api.post('/barcodes/next', need('inventory', 'edit'), wrap(async (_req, res) => res.json({ barcode: await nextBarcode(db.query) })));
-  api.get('/barcodes/lookup', needAny(['pos', 'view'], ['inventory', 'view']), wrap(async (req, res) => {
+  // Scan lookup used by POS, receiving, counts, transfers, returns and the verification screen.
+  api.get('/barcodes/lookup', needAny(['pos', 'view'], ['inventory', 'view'], ['barcodes', 'view'], ['purchases', 'view']), wrap(async (req, res) => {
     const code = cleanScan(req.query.code);
-    const v = await db.one(`SELECT v.id, v.sku, v.barcode, v.size_ml, v.label, v.retail_price, v.active, p.name, b.name AS brand FROM variants v JOIN products p ON p.id = v.product_id
+    const v = await db.one(`SELECT v.id, v.product_id, v.sku, v.barcode, v.symbology, v.size_ml, v.label, v.retail_price, v.compare_price, v.active, v.sale_blocked, v.block_reason, v.min_stock,
+      p.name, p.name_ar, p.image_url, p.active AS product_active, b.name AS brand FROM variants v JOIN products p ON p.id = v.product_id
       LEFT JOIN brands b ON b.id = p.brand_id WHERE v.barcode = $1 OR lower(v.sku) = lower($1)`, [code]);
-    res.json(v || null);
+    if (!v) return res.json(null);
+    const stock = await db.query('SELECT s.branch_id, br.name AS branch, s.qty FROM stock_levels s JOIN branches br ON br.id = s.branch_id WHERE s.variant_id = $1 ORDER BY br.name', [v.id]);
+    const batches = await db.query('SELECT batch_no, expiry_date FROM batches WHERE variant_id = $1 ORDER BY received_at DESC LIMIT 5', [v.id]);
+    const printed = await db.one('SELECT COALESCE(SUM(l.copies),0)::int AS n, MAX(j.created_at) AS last FROM print_job_lines l JOIN print_jobs j ON j.id = l.job_id WHERE l.variant_id = $1 AND j.status <> \'failed\'', [v.id]);
+    res.json({ ...v, stock, batches, printed, sellable: v.active && v.product_active && !v.sale_blocked });
   }));
+  api.post('/variants/:id/block', need('inventory', 'manage'), wrap(async (req, res) => {
+    const blocked = !!req.body.blocked;
+    if (blocked) must(str(req.body.reason), 400, 'Give a reason (e.g. tester, damaged, recalled batch)');
+    const r = await db.one('UPDATE variants SET sale_blocked = $1, block_reason = $2 WHERE id = $3 RETURNING id', [blocked, blocked ? str(req.body.reason, 200) : null, req.params.id]);
+    must(r, 404, 'Product size not found');
+    res.json({ ok: true });
+  }));
+
+  // ---------- label templates ----------
+  const templateSpec = (b) => {
+    const w = Number(b.widthMm), h = Number(b.heightMm);
+    must(str(b.name), 400, 'Name the template');
+    must(w >= 15 && w <= 120 && h >= 10 && h <= 150, 400, 'Label size must be 15–120 mm wide and 10–150 mm high');
+    must(Array.isArray(b.fields) && b.fields.length, 400, 'Choose the fields');
+    const keys = ['shop', 'logo', 'brand', 'name', 'size', 'sku', 'barcode', 'price', 'original', 'batch', 'qr'];
+    return {
+      name: str(b.name, 60), widthMm: w, heightMm: h, marginMm: Math.min(5, Math.max(0, Number(b.marginMm) || 0)),
+      symbology: ['auto', ...Object.keys(SYMBOLOGIES)].includes(b.symbology) ? b.symbology : 'auto',
+      barcodeHeightMm: Math.min(40, Math.max(4, Number(b.barcodeHeightMm) || 8)), module: Math.min(4, Math.max(1, int(b.module || 2))),
+      qrData: ['barcode', 'sku', 'text'].includes(b.qrData) ? b.qrData : 'barcode', qrText: str(b.qrText, 200) || '',
+      fields: b.fields.filter((x) => keys.includes(x.key)).map((x) => ({ key: x.key, on: !!x.on, size: Math.min(30, Math.max(0, Number(x.size) || 0)), align: ['left', 'center', 'right'].includes(x.align) ? x.align : 'center', bold: !!x.bold })),
+    };
+  };
+  api.get('/label-templates', needAny(['barcodes', 'view'], ['barcodes', 'create']), wrap(async (_req, res) => {
+    const own = await db.query('SELECT id, spec FROM label_templates ORDER BY updated_at DESC');
+    res.json([...own.map((t) => ({ ...t.spec, id: t.id })), ...BUILTIN_TEMPLATES]);
+  }));
+  api.post('/label-templates', need('barcodes', 'manage'), wrap(async (req, res) => {
+    const tid = id('tpl_');
+    await db.query('INSERT INTO label_templates (id, name, spec, created_by) VALUES ($1,$2,$3,$4)', [tid, str(req.body.name, 60), JSON.stringify(templateSpec(req.body)), req.user.id]);
+    res.json({ id: tid });
+  }));
+  api.put('/label-templates/:id', need('barcodes', 'manage'), wrap(async (req, res) => {
+    must(!BUILTIN_TEMPLATES.some((t) => t.id === req.params.id), 400, 'Built-in templates cannot be changed — save a copy instead');
+    const r = await db.one('UPDATE label_templates SET name = $1, spec = $2, updated_at = now() WHERE id = $3 RETURNING id', [str(req.body.name, 60), JSON.stringify(templateSpec(req.body)), req.params.id]);
+    must(r, 404, 'Template not found');
+    res.json({ ok: true });
+  }));
+  api.delete('/label-templates/:id', need('barcodes', 'manage'), wrap(async (req, res) => {
+    await db.query('DELETE FROM label_templates WHERE id = $1', [req.params.id]);
+    res.json({ ok: true });
+  }));
+
+  // ---------- barcode printers ----------
+  const printerVals = (b) => {
+    must(str(b.name), 400, 'Name the printer');
+    must(['browser', 'network', 'usb', 'bluetooth'].includes(b.connection), 400, 'Choose how the printer is connected');
+    must(['driver', 'zpl', 'tspl', 'escpos'].includes(b.language), 400, 'Choose the printer language');
+    if (b.connection === 'browser') must(b.language === 'driver', 400, 'Browser printing uses the Windows / Mac printer driver');
+    if (b.connection === 'network') {
+      must(/^[a-z0-9.-]{1,80}$/i.test(String(b.host || '')), 400, 'Enter the printer IP address (e.g. 192.168.1.50)');
+      must(b.language !== 'driver', 400, 'A network printer needs its language (ZPL, TSPL or ESC/POS)');
+    }
+    if (['usb', 'bluetooth'].includes(b.connection) && b.language !== 'driver') must(str(b.queue), 400, 'Enter the printer name (or Windows share name) shown by the print agent');
+    const num = (x, d, lo, hi) => Math.min(hi, Math.max(lo, Number(x ?? d)));
+    return [str(b.name, 60), str(b.model, 60), b.branchId || null, b.connection, b.language, str(b.host, 80), b.connection === 'network' ? Math.round(num(b.port, 9100, 1, 65535)) : null, str(b.queue, 80),
+      [203, 300, 600].includes(Number(b.dpi)) ? Number(b.dpi) : 203, Math.round(num(b.density, 8, 0, 15)), Math.round(num(b.speed, 4, 1, 14)), Number(b.orientation) === 180 ? 180 : 0,
+      num(b.labelWidthMm, 38, 15, 120), num(b.labelHeightMm, 25, 10, 150), num(b.gapMm, 2, 0, 10), Math.round(num(b.cols, 1, 1, 3)), num(b.colGapMm, 2, 0, 10), num(b.offsetXMm, 0, -10, 20), num(b.offsetYMm, 0, -10, 20),
+      str(b.templateId, 60), b.active !== false];
+  };
+  const PRINTER_COLS = 'name, model, branch_id, connection, language, host, port, queue, dpi, density, speed, orientation, label_width_mm, label_height_mm, gap_mm, cols, col_gap_mm, offset_x_mm, offset_y_mm, template_id, active';
+  api.get('/printers', needAny(['barcodes', 'view'], ['barcodes', 'create']), wrap(async (_req, res) => res.json(await db.query('SELECT p.*, b.name AS branch FROM printers p LEFT JOIN branches b ON b.id = p.branch_id ORDER BY p.is_default DESC, p.name'))));
+  api.post('/printers', need('barcodes', 'manage'), wrap(async (req, res) => {
+    const pid = id('prn_');
+    const vals = printerVals(req.body);
+    await tx(async (q) => {
+      const first = !(await q.one('SELECT 1 AS x FROM printers'));
+      await q(`INSERT INTO printers (${PRINTER_COLS}, id, created_by, is_default) VALUES (${vals.map((_, i) => '$' + (i + 1)).join(',')},$${vals.length + 1},$${vals.length + 2},$${vals.length + 3})`, [...vals, pid, req.user.id, first]);
+    });
+    res.json({ id: pid });
+  }));
+  api.put('/printers/:id', need('barcodes', 'manage'), wrap(async (req, res) => {
+    const vals = printerVals(req.body);
+    // changing how a printer is reached invalidates the last connection test
+    const r = await db.one(`UPDATE printers SET ${PRINTER_COLS.split(', ').map((c, i) => `${c} = $${i + 1}`).join(', ')},
+      last_test_ok = CASE WHEN connection IS DISTINCT FROM $4 OR language IS DISTINCT FROM $5 OR host IS DISTINCT FROM $6 OR port IS DISTINCT FROM $7 OR queue IS DISTINCT FROM $8 THEN NULL ELSE last_test_ok END
+      WHERE id = $${vals.length + 1} RETURNING id`, [...vals, req.params.id]);
+    must(r, 404, 'Printer not found');
+    res.json({ ok: true });
+  }));
+  api.post('/printers/:id/default', need('barcodes', 'manage'), wrap(async (req, res) => {
+    await tx(async (q) => { await q('UPDATE printers SET is_default = false'); await q('UPDATE printers SET is_default = true WHERE id = $1', [req.params.id]); });
+    res.json({ ok: true });
+  }));
+  api.delete('/printers/:id', need('barcodes', 'manage'), wrap(async (req, res) => {
+    // printers with history are switched off, not deleted, so the history keeps its printer
+    const used = await db.one('SELECT 1 AS x FROM print_jobs WHERE printer_id = $1 LIMIT 1', [req.params.id]);
+    if (used) await db.query('UPDATE printers SET active = false, is_default = false WHERE id = $1', [req.params.id]);
+    else await db.query('DELETE FROM printers WHERE id = $1', [req.params.id]);
+    res.json({ ok: true, deactivated: !!used });
+  }));
+  /**
+   * Record a connection test. Only two kinds count as proof: the print agent reached the printer
+   * ('agent_probe' / 'agent_print'), or a person confirmed that a test label really came out ('user_confirmed').
+   */
+  api.post('/printers/:id/test-result', need('barcodes', 'manage'), wrap(async (req, res) => {
+    must(['agent_probe', 'agent_print', 'user_confirmed', 'user_failed'].includes(req.body.method), 400, 'Unknown test method');
+    const ok = req.body.method === 'user_failed' ? false : !!req.body.ok;
+    await db.query('UPDATE printers SET last_test_at = now(), last_test_ok = $1, last_test_method = $2, last_test_detail = $3 WHERE id = $4', [ok, req.body.method, str(req.body.detail, 300), req.params.id]);
+    res.json({ ok: true });
+  }));
+
+  // ---------- print jobs (label printing history) ----------
+  api.post('/print-jobs', need('barcodes', 'create'), wrap(async (req, res) => {
+    const reprintOf = req.body.reprintOf ? String(req.body.reprintOf) : null;
+    if (reprintOf) {
+      must(can(req.perms, 'barcodes', 'approve'), 403, 'Reprinting from history needs the Barcodes "approve" permission');
+      must(str(req.body.reason), 400, 'Give a reason for the reprint');
+    }
+    const items = Array.isArray(req.body.items) ? req.body.items.slice(0, 500) : [];
+    must(items.length, 400, 'Choose what to print');
+    const total = items.reduce((a, x) => a + (Number(x.copies) || 0), 0);
+    must(total > 0 && total <= 5000, 400, 'Between 1 and 5000 labels per print');
+    const printer = req.body.printerId ? await db.one('SELECT id, name FROM printers WHERE id = $1', [req.body.printerId]) : null;
+    const out = await tx(async (q) => {
+      const jid = id('pj_');
+      const { nextNumber } = await import('./util.js');
+      const number = await nextNumber(q, 'printjob', 'LBL');
+      await q(`INSERT INTO print_jobs (id, number, printer_id, printer_name, template_id, template_name, source, ref_id, reprint_of, reason, labels, user_id, user_name)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`, [jid, number, printer?.id || null, printer?.name || str(req.body.printerName, 60) || 'Browser', str(req.body.templateId, 60), str(req.body.templateName, 60),
+        ['product', 'bulk', 'purchase', 'test', 'reprint', 'inventory'].includes(req.body.source) ? req.body.source : 'bulk', str(req.body.refId, 60), reprintOf, str(req.body.reason, 200), total, req.user.id, req.user.name]);
+      for (const it of items) {
+        const copies = posInt(it.copies, 'copies');
+        const v = it.variantId ? await q.one('SELECT v.id, v.sku, v.barcode, p.name, v.label, v.size_ml FROM variants v JOIN products p ON p.id = v.product_id WHERE v.id = $1', [it.variantId]) : null;
+        if (it.variantId) must(v, 404, 'Product not found');
+        await q('INSERT INTO print_job_lines (job_id, variant_id, product_name, sku, barcode, batch_no, copies) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+          [jid, v?.id || null, v ? `${v.name}${v.label ? ' ' + v.label : v.size_ml ? ` ${v.size_ml}ml` : ''}` : 'Test label', v?.sku || 'TEST', v?.barcode || str(it.barcode, 48), str(it.batchNo, 60), copies]);
+      }
+      return { id: jid, number };
+    });
+    res.locals.entityId = out.id;
+    res.json(out);
+  }));
+  // The outcome is reported honestly: 'sent' only when the print agent confirmed delivery to the printer;
+  // 'dialog_opened' when the browser's print window was shown (the browser cannot tell whether it printed).
+  api.post('/print-jobs/:id/result', need('barcodes', 'create'), wrap(async (req, res) => {
+    must(['sent', 'dialog_opened', 'failed'].includes(req.body.status), 400, 'Unknown status');
+    const r = await db.one("UPDATE print_jobs SET status = $1, detail = $2, finished_at = now() WHERE id = $3 AND user_id = $4 AND status = 'pending' RETURNING id", [req.body.status, str(req.body.detail, 300), req.params.id, req.user.id]);
+    must(r, 409, 'This print job was already completed');
+    res.json({ ok: true });
+  }));
+  api.get('/print-jobs', need('barcodes', 'view'), wrap(async (req, res) => {
+    const p = [req.query.from || '2000-01-01', (req.query.to || today()) + 'T23:59:59Z'];
+    let extra = '';
+    if (req.query.search) { p.push('%' + String(req.query.search).toLowerCase() + '%'); extra = ` AND EXISTS (SELECT 1 FROM print_job_lines l WHERE l.job_id = j.id AND (lower(l.product_name) LIKE $3 OR lower(l.sku) LIKE $3 OR l.barcode LIKE $3))`; }
+    res.json(await db.query(`SELECT j.*, (SELECT json_agg(json_build_object('variant_id', l.variant_id, 'product_name', l.product_name, 'sku', l.sku, 'barcode', l.barcode, 'batch_no', l.batch_no, 'copies', l.copies) ORDER BY l.id) FROM print_job_lines l WHERE l.job_id = j.id) AS lines,
+      (SELECT COUNT(*)::int FROM print_jobs r WHERE r.reprint_of = j.id) AS reprints FROM print_jobs j WHERE j.created_at BETWEEN $1 AND $2 ${extra} ORDER BY j.created_at DESC LIMIT 300`, p));
+  }));
+  // label data for printing: current name, price and barcode of each variant
+  api.post('/labels/data', needAny(['barcodes', 'create'], ['barcodes', 'view']), wrap(async (req, res) => {
+    const ids = (Array.isArray(req.body.variantIds) ? req.body.variantIds : []).slice(0, 500).map(String);
+    res.json(await db.query(`SELECT v.id, v.sku, v.barcode, v.symbology, v.label, v.size_ml, v.retail_price, v.compare_price AS original_price, p.name, b.name AS brand
+      FROM variants v JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id WHERE v.id = ANY($1)`, [ids]));
+  }));
+
   api.post('/products', need('inventory', 'create'), wrap(async (req, res) => {
     must(str(req.body.name), 400, 'Product name is required');
     const out = await tx(async (q) => {
@@ -422,7 +608,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, [...productFields(req.body), pid, !!req.body.isTest]);
       const vids = [];
       for (const v of req.body.variants || []) {
-        const vid = await saveVariant(q, pid, v);
+        const vid = await saveVariant(q, pid, v, null, req, req.body);
         vids.push(vid);
         if (Number(v.openingQty) > 0) {
           checkBranch(req, 'inventory', v.branchId || req.body.branchId);
@@ -443,7 +629,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
       const p = await q.one('SELECT id FROM products WHERE id = $1', [req.params.id]);
       must(p, 404, 'Product not found');
       await q(`UPDATE products SET name=$1, name_ar=$2, brand_id=$3, category_id=$4, description=$5, description_ar=$6, gender=$7, concentration=$8, notes_top=$9, notes_heart=$10, notes_base=$11, image_url=$12, web_visible=$13, active=$14, updated_at=now() WHERE id=$15`, [...productFields(req.body), p.id]);
-      for (const v of req.body.variants || []) await saveVariant(q, p.id, v, v.id);
+      for (const v of req.body.variants || []) await saveVariant(q, p.id, v, v.id, req, req.body);
     });
     res.json({ ok: true });
   }));
@@ -610,7 +796,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
   api.get('/purchase-orders/:id', need('purchases', 'view'), wrap(async (req, res) => {
     const po = await db.one('SELECT po.*, s.name AS supplier FROM purchase_orders po JOIN suppliers s ON s.id = po.supplier_id WHERE po.id = $1', [req.params.id]);
     must(po, 404, 'Purchase order not found');
-    const lines = await db.query('SELECT l.*, p.name, b.name AS brand, v.sku, v.size_ml, v.label FROM po_lines l JOIN variants v ON v.id = l.variant_id JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id WHERE l.po_id = $1', [po.id]);
+    const lines = await db.query('SELECT l.*, p.name, b.name AS brand, v.sku, v.barcode, v.symbology, v.retail_price, v.compare_price AS original_price, v.size_ml, v.label FROM po_lines l JOIN variants v ON v.id = l.variant_id JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id WHERE l.po_id = $1', [po.id]);
     const bills = await db.query('SELECT * FROM supplier_bills WHERE po_id = $1', [po.id]);
     res.json({ ...po, lines, bills });
   }));
@@ -716,7 +902,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     const s = await db.one('SELECT s.*, c.name AS customer_name, c.phone AS customer_phone, u.name AS cashier_name, b.name AS branch_name FROM sales s LEFT JOIN customers c ON c.id = s.customer_id LEFT JOIN users u ON u.id = s.cashier_id JOIN branches b ON b.id = s.branch_id WHERE s.id = $1', [req.params.id]);
     must(s, 404, 'Sale not found');
     if (!can(req.perms, 'sales', 'view')) must(s.cashier_id === req.user.id, 403, 'You can only open your own sales');
-    const lines = await db.query('SELECT l.*, p.name, p.name_ar, b.name AS brand, v.sku, v.size_ml, v.label FROM sale_lines l JOIN variants v ON v.id = l.variant_id JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id WHERE l.sale_id = $1 ORDER BY l.id', [s.id]);
+    const lines = await db.query('SELECT l.*, p.name, p.name_ar, b.name AS brand, v.sku, v.barcode, v.size_ml, v.label FROM sale_lines l JOIN variants v ON v.id = l.variant_id JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id WHERE l.sale_id = $1 ORDER BY l.id', [s.id]);
     const payments = await db.query('SELECT id, direction, method, amount, status, provider, reference, at FROM payments WHERE sale_id = $1 ORDER BY at', [s.id]);
     const refunds = await db.query('SELECT r.*, u.name AS approved_by_name FROM refunds r LEFT JOIN users u ON u.id = r.approved_by WHERE r.sale_id = $1 ORDER BY r.created_at', [s.id]);
     const delivery = await db.one('SELECT * FROM deliveries WHERE sale_id = $1', [s.id]);

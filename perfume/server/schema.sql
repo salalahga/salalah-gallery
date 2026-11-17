@@ -274,3 +274,36 @@ CREATE TABLE IF NOT EXISTS announcements (id TEXT PRIMARY KEY, title TEXT NOT NU
 
 -- ---------- files (product photos) ----------
 CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, mime TEXT NOT NULL, data BYTEA NOT NULL, size INTEGER NOT NULL, created_by TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+
+-- ---------- barcodes & label printing ----------
+ALTER TABLE variants ADD COLUMN IF NOT EXISTS symbology TEXT NOT NULL DEFAULT 'ean13';
+ALTER TABLE variants ADD COLUMN IF NOT EXISTS compare_price BIGINT;
+ALTER TABLE variants ADD COLUMN IF NOT EXISTS sale_blocked BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE variants ADD COLUMN IF NOT EXISTS block_reason TEXT;
+
+CREATE TABLE IF NOT EXISTS label_templates (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, spec JSONB NOT NULL, created_by TEXT, updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+
+-- Printer settings. The connection is verified only by a real test (agent probe or a test label the user confirmed).
+CREATE TABLE IF NOT EXISTS printers (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, model TEXT, branch_id TEXT REFERENCES branches(id),
+  connection TEXT NOT NULL CHECK (connection IN ('browser','network','usb','bluetooth')),
+  language TEXT NOT NULL CHECK (language IN ('driver','zpl','tspl','escpos')),
+  host TEXT, port INTEGER, queue TEXT, dpi INTEGER NOT NULL DEFAULT 203,
+  density INTEGER NOT NULL DEFAULT 8, speed INTEGER NOT NULL DEFAULT 4, orientation INTEGER NOT NULL DEFAULT 0,
+  label_width_mm NUMERIC(6,1) NOT NULL DEFAULT 38, label_height_mm NUMERIC(6,1) NOT NULL DEFAULT 25, gap_mm NUMERIC(5,1) NOT NULL DEFAULT 2,
+  cols INTEGER NOT NULL DEFAULT 1, col_gap_mm NUMERIC(5,1) NOT NULL DEFAULT 2, offset_x_mm NUMERIC(5,1) NOT NULL DEFAULT 0, offset_y_mm NUMERIC(5,1) NOT NULL DEFAULT 0,
+  template_id TEXT, is_default BOOLEAN NOT NULL DEFAULT false, active BOOLEAN NOT NULL DEFAULT true,
+  last_test_at TIMESTAMPTZ, last_test_ok BOOLEAN, last_test_method TEXT, last_test_detail TEXT,
+  created_by TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+
+CREATE TABLE IF NOT EXISTS print_jobs (
+  id TEXT PRIMARY KEY, number TEXT NOT NULL UNIQUE, printer_id TEXT REFERENCES printers(id), printer_name TEXT, template_id TEXT, template_name TEXT,
+  source TEXT NOT NULL, ref_id TEXT, reprint_of TEXT REFERENCES print_jobs(id), reason TEXT, labels INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','dialog_opened','failed')), detail TEXT,
+  user_id TEXT, user_name TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ);
+CREATE INDEX IF NOT EXISTS print_jobs_at ON print_jobs(created_at);
+CREATE TABLE IF NOT EXISTS print_job_lines (
+  id BIGSERIAL PRIMARY KEY, job_id TEXT NOT NULL REFERENCES print_jobs(id), variant_id TEXT REFERENCES variants(id),
+  product_name TEXT, sku TEXT, barcode TEXT, batch_no TEXT, copies INTEGER NOT NULL CHECK (copies > 0));
+CREATE INDEX IF NOT EXISTS print_job_lines_variant ON print_job_lines(variant_id);

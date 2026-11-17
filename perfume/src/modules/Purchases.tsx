@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { api, qs } from '../core/api';
 import { t } from '../core/i18n';
 import { money, parseMoney, useSession, variantName, date, today } from '../core/session';
+import { LabelPrinter, type LabelItem } from '../components/Labels';
+import { ScanBox, useScanner, beep } from '../core/scanner';
 import { Card, Empty, Field, Loading, Modal, PageHead, Status, Tabs, TestBadge, useAction, useData, download } from '../components/ui';
 
 type Tab = 'orders' | 'bills' | 'suppliers';
@@ -100,10 +102,33 @@ function Receive({ po, onClose, onDone }: { po: any; onClose: () => void; onDone
   const [lines, setLines] = useState<Record<string, { qty: string; batchNo: string; expiryDate: string }>>(() => Object.fromEntries(po.lines.map((l: any) => [l.id, { qty: String(l.qty - l.received_qty), batchNo: '', expiryDate: '' }])));
   const [f, setF] = useState({ landedCost: '', supplierRef: '', billDate: today() });
   const { busy, run } = useAction();
+  const { can } = useSession();
+  const [scanMode, setScanMode] = useState(false);
+  const [scanMsg, setScanMsg] = useState('');
+  const [print, setPrint] = useState<LabelItem[] | null>(null);
+  const open = po.lines.filter((l: any) => l.qty > l.received_qty);
+  const startScan = () => { setScanMode(true); setLines(Object.fromEntries(Object.entries(lines).map(([k, l]) => [k, { ...l, qty: '0' }]))); };
+  const onScan = (code: string) => {
+    const l = open.find((x: any) => x.barcode === code || x.sku.toLowerCase() === code.toLowerCase());
+    if (!l) { beep(false); return setScanMsg(`${code}: not on this purchase order${po.lines.some((x: any) => x.barcode === code) ? ' (already fully received)' : ' — add it to the order or create the product first'}`); }
+    const n = (Number(lines[l.id].qty) || 0) + 1;
+    if (n > l.qty - l.received_qty) { beep(false); return setScanMsg(`${variantName(l)}: more than ordered (${l.qty - l.received_qty})`); }
+    beep(true); setScanMsg(`${variantName(l)}: ${n} of ${l.qty - l.received_qty}`); setLines({ ...lines, [l.id]: { ...lines[l.id], qty: String(n) } });
+  };
+  useScanner(onScan, !print);
+  const receive = () => run(() => api.post(`/purchase-orders/${po.id}/receive`, { ...f, landedCost: f.landedCost ? parseMoney(f.landedCost) : 0, lines: Object.entries(lines).map(([poLineId, l]) => ({ poLineId, qty: Number(l.qty) || 0, batchNo: l.batchNo, expiryDate: l.expiryDate || undefined })) }), 'Goods received — stock and supplier bill updated').then((r) => {
+    if (!r) return;
+    const items: LabelItem[] = open.filter((l: any) => Number(lines[l.id].qty) > 0).map((l: any) => ({ id: l.variant_id, barcode: l.barcode, symbology: l.symbology, sku: l.sku, name: l.name, brand: l.brand, label: l.label, size_ml: l.size_ml, retail_price: l.retail_price, original_price: l.original_price, batch_no: lines[l.id].batchNo || undefined, copies: Number(lines[l.id].qty) }));
+    if (items.length && can('barcodes', 'create')) setPrint(items); else onDone();
+  });
+  if (print) return <LabelPrinter items={print} source="purchase" refId={po.id} onClose={() => { setPrint(null); onDone(); }} />;
   return (
-    <Modal wide title="Receive goods" onClose={onClose} footer={<button className="btn gold" disabled={busy} onClick={() => run(() => api.post(`/purchase-orders/${po.id}/receive`, { ...f, landedCost: f.landedCost ? parseMoney(f.landedCost) : 0, lines: Object.entries(lines).map(([poLineId, l]) => ({ poLineId, qty: Number(l.qty) || 0, batchNo: l.batchNo, expiryDate: l.expiryDate || undefined })) }), 'Goods received — stock and supplier bill updated').then((r) => r && onDone())}>Receive into stock</button>}>
+    <Modal wide title="Receive goods" onClose={onClose} footer={<button className="btn gold" disabled={busy} onClick={receive}>Receive into stock{can('barcodes', 'create') ? ' & print labels' : ''}</button>}>
+      <div className="row" style={{ marginBottom: 10 }}>
+        {!scanMode ? <button className="btn sm" onClick={startScan}>Count by scanning each bottle</button> : <div className="grow"><ScanBox onScan={onScan} placeholder="Scan each bottle as you unpack it" />{scanMsg && <div className="small muted">{scanMsg}</div>}</div>}
+      </div>
       <table className="t"><thead><tr><th>Product</th><th>Qty received</th><th>Batch</th><th>Expiry</th></tr></thead>
-        <tbody>{po.lines.filter((l: any) => l.qty > l.received_qty).map((l: any) => <tr key={l.id}><td>{variantName(l)}<div className="small muted">{l.qty - l.received_qty} outstanding</div></td>
+        <tbody>{po.lines.filter((l: any) => l.qty > l.received_qty).map((l: any) => <tr key={l.id}><td>{variantName(l)}<div className="small muted">{l.qty - l.received_qty} outstanding · {l.barcode}</div></td>
           <td><input value={lines[l.id].qty} onChange={(e) => setLines({ ...lines, [l.id]: { ...lines[l.id], qty: e.target.value } })} style={{ width: 70 }} /></td>
           <td><input value={lines[l.id].batchNo} onChange={(e) => setLines({ ...lines, [l.id]: { ...lines[l.id], batchNo: e.target.value } })} style={{ width: 110 }} /></td>
           <td><input type="date" value={lines[l.id].expiryDate} onChange={(e) => setLines({ ...lines, [l.id]: { ...lines[l.id], expiryDate: e.target.value } })} /></td></tr>)}</tbody></table>
@@ -220,6 +245,15 @@ function ReturnForm({ supplierId, bills, onClose, onDone }: { supplierId: string
   const [billId, setBillId] = useState('');
   const [reason, setReason] = useState('');
   const { busy, run } = useAction();
+  const [scanMsg, setScanMsg] = useState('');
+  const onScan = (code: string) => {
+    const v = (items || []).find((x) => x.barcode === code || x.sku.toLowerCase() === code.toLowerCase());
+    if (!v) { beep(false); return setScanMsg(`${code}: not found`); }
+    const n = (lines[v.id] || 0) + 1;
+    if (n > v.qty) { beep(false); return setScanMsg(`${variantName(v)}: only ${v.qty} in stock`); }
+    beep(true); setScanMsg(`${variantName(v)} × ${n}`); setLines({ ...lines, [v.id]: n });
+  };
+  useScanner(onScan);
   return (
     <Modal wide title="Return goods to supplier" onClose={onClose} footer={<button className="btn danger" disabled={busy || !reason} onClick={() => run(() => api.post('/purchase-returns', { supplierId, branchId, billId: billId || undefined, reason, lines: Object.entries(lines).filter(([, q]) => q > 0).map(([variantId, qty]) => ({ variantId, qty })) }), 'Return recorded').then((r) => r && onDone())}>Record return</button>}>
       <div className="grid g3">
@@ -227,6 +261,7 @@ function ReturnForm({ supplierId, bills, onClose, onDone }: { supplierId: string
         <Field label="Against bill (optional)"><select value={billId} onChange={(e) => setBillId(e.target.value)}><option value="">—</option>{bills.map((b) => <option key={b.id} value={b.id}>{b.number}</option>)}</select></Field>
         <Field label="Reason"><input value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
       </div>
+      <div style={{ marginTop: 10 }}><ScanBox onScan={onScan} placeholder="Scan each bottle going back to the supplier" />{scanMsg && <div className="small muted">{scanMsg}</div>}</div>
       <div style={{ maxHeight: 320, overflowY: 'auto', marginTop: 10 }}><table className="t"><tbody>{(items || []).filter((v) => v.qty > 0).map((v) => <tr key={v.id}><td>{variantName(v)}</td><td className="num muted">{v.qty}</td><td><input type="number" min={0} max={v.qty} value={lines[v.id] || ''} onChange={(e) => setLines({ ...lines, [v.id]: Number(e.target.value) })} style={{ width: 70 }} /></td></tr>)}</tbody></table></div>
       <div className="small muted">Returned at average cost; the supplier balance and input VAT are reduced.</div>
     </Modal>

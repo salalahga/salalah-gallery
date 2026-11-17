@@ -36,6 +36,8 @@ export async function quote(q, input, { user, perms }) {
   const lines = items.map((it) => {
     const v = vmap.get(it.variantId);
     must(v && v.active, 404, 'A product in the cart is not available');
+    // restricted stock (testers, damaged, recalled batches) cannot be sold on any channel
+    if (v.sale_blocked) fail(409, `${v.brand ? v.brand + ' ' : ''}${v.name}${v.label ? ' ' + v.label : ''} cannot be sold: ${v.block_reason || 'blocked'}`, { code: 'sale_blocked', variantId: v.id });
     const qty = posInt(it.qty, 'quantity');
     const list = channel === 'web' ? (v.web_price ?? v.retail_price) : channel === 'wholesale' ? (v.wholesale_price ?? v.retail_price) : v.retail_price;
     let unitPrice = list;

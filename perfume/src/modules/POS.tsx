@@ -51,7 +51,7 @@ function CameraScan({ onCode, onClose }: { onCode: (c: string) => void; onClose:
   );
 }
 
-type Item = { id: string; sku: string; barcode?: string; name: string; name_ar?: string; brand?: string; label?: string; size_ml?: number; retail_price: number; qty: number; image_url?: string };
+type Item = { sale_blocked?: boolean; block_reason?: string | null; id: string; sku: string; barcode?: string; name: string; name_ar?: string; brand?: string; label?: string; size_ml?: number; retail_price: number; qty: number; image_url?: string };
 type Line = { variantId: string; qty: number; unitPrice?: number };
 type Quote = { lines: any[]; applied: { id: string; name: string; amount: number }[]; subtotal: number; discount: number; net: number; vat: number; total: number; shortages: { variantId: string; available: number; needed: number }[]; customer?: any };
 type Pay = { method: string; amount: string; reference: string };
@@ -111,7 +111,7 @@ export default function POS() {
   // ---------- barcode scanning (main way to sell) ----------
   // USB/Bluetooth scanners type the code very fast and press Enter. It works with the cursor in the
   // search box or anywhere else on the screen. Arabic keyboard digits are converted automatically.
-  const [scan, setScan] = useState<{ kind: 'ready' | 'ok' | 'err'; text: string; code?: string }>({ kind: 'ready', text: 'Ready to scan — scan a bottle to add it' });
+  const [scan, setScan] = useState<{ kind: 'ready' | 'ok' | 'err'; text: string; code?: string; item?: any; left?: number }>({ kind: 'ready', text: 'Ready to scan — scan a bottle to add it' });
   const [flash, setFlash] = useState<{ id: string; n: number } | null>(null);
   const [newCode, setNewCode] = useState<string | null>(null);
   const [camera, setCamera] = useState(false);
@@ -121,15 +121,17 @@ export default function POS() {
     const hit = (catalogue || []).find((v) => v.barcode === code || v.sku.toLowerCase() === code.toLowerCase());
     if (hit) {
       const inCart = cart.find((l) => l.variantId === hit.id)?.qty || 0;
-      if (hit.qty - inCart <= 0) { beep(false); setScan({ kind: 'err', text: `${variantName(hit)} — no stock left at this branch` }); return; }
+      if (hit.sale_blocked) { beep(false); setScan({ kind: 'err', text: `${variantName(hit)} cannot be sold${hit.block_reason ? ` — ${hit.block_reason}` : ''}`, item: hit, left: hit.qty - inCart }); return; }
+      if (hit.qty - inCart <= 0) { beep(false); setScan({ kind: 'err', text: `${variantName(hit)} — no stock left at this branch`, item: hit, left: 0 }); return; }
       add(hit); beep(true);
       setFlash((f) => ({ id: hit.id, n: (f?.n || 0) + 1 }));
-      setScan({ kind: 'ok', text: `Added ${variantName(hit)} · ${money(hit.retail_price)} OMR` });
+      setScan({ kind: 'ok', text: `Added ${variantName(hit)} · ${money(hit.retail_price)} OMR`, item: hit, left: hit.qty - inCart - 1 });
       return;
     }
     beep(false);
     const other = await api.get<any>('/barcodes/lookup' + qs({ code })).catch(() => null);
-    if (other && !other.active) setScan({ kind: 'err', text: `${variantName(other)} is switched off (inactive)`, code });
+    if (other && other.sale_blocked) setScan({ kind: 'err', text: `${variantName(other)} cannot be sold${other.block_reason ? ` — ${other.block_reason}` : ''}`, item: other });
+    else if (other && (!other.active || !other.product_active)) setScan({ kind: 'err', text: `${variantName(other)} is switched off (inactive)`, item: other });
     else setScan({ kind: 'err', text: `Barcode ${code} is not in the system`, code });
   };
   useEffect(() => {
@@ -238,8 +240,10 @@ export default function POS() {
         <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSearchEnter()} placeholder="Scan barcode, search, or type a command: “add two Khamrah”, “apply 10% discount”, “check availability of Oud Wood”" autoFocus />
       </div>
       <div className={'scanbar no-print ' + scan.kind}>
-        <span className="dot" /><span className="grow">{scan.text}</span>
-        {scan.kind === 'err' && scan.code && can('inventory', 'create') && <button className="btn sm" onClick={() => setNewCode(scan.code!)}>Create product with this barcode</button>}
+        <span className="dot" />
+        {scan.item && <span className="scanthumb"><Bottle name={scan.item.brand || scan.item.name} url={scan.item.image_url} /></span>}
+        <span className="grow">{scan.text}{scan.item && <span className="small" style={{ display: 'block', opacity: 0.8 }}>{scan.item.size_ml ? `${scan.item.size_ml} ml · ` : ''}OMR {money(scan.item.retail_price)}{scan.left != null ? ` · ${Math.max(0, scan.left)} left in stock` : ''} · {scan.item.barcode}</span>}</span>
+        {scan.kind === 'err' && scan.code && !scan.item && can('inventory', 'create') && <button className="btn sm" onClick={() => setNewCode(scan.code!)}>Create product with this barcode</button>}
       </div>
       {voiceLog.length > 0 && <div className="col no-print" style={{ marginBottom: 10, gap: 4 }}>{voiceLog.slice(0, 3).map((v, i) => <div key={i} className={'small ' + (v.ok ? '' : 'bad')}>🎙 “{v.heard}” → {v.did}</div>)}</div>}
 
@@ -247,7 +251,7 @@ export default function POS() {
         <div>
           <div className="products">
             {shown.map((v) => (
-              <button key={v.id} className="pcard" onClick={() => add(v)} disabled={v.qty <= 0} style={{ opacity: v.qty <= 0 ? 0.45 : 1 }}>
+              <button key={v.id} className="pcard" onClick={() => add(v)} disabled={v.qty <= 0 || !!v.sale_blocked} style={{ opacity: v.qty <= 0 || v.sale_blocked ? 0.45 : 1 }} title={v.sale_blocked ? `Cannot be sold: ${v.block_reason || ''}` : undefined}>
                 <Bottle name={v.brand || v.name} url={v.image_url} />
                 <div style={{ minWidth: 0 }}>
                   <div className="pn">{v.brand} {v.name}</div>
