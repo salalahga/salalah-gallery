@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2, Printer, PackageCheck, HandCoins, Truck, Phone, MessageCircle, Building2 } from 'lucide-react';
 import { store, useDB, nextNumber, today, uid } from '../core/store';
 import type { Purchase, PurchaseLine, Supplier } from '../core/types';
-import { money, fmtDate } from '../core/calc';
+import { money, fmtDate, catOf } from '../core/calc';
 import { lookup, waLink, daysFrom } from '../core/helpers';
 import { Modal, Field, PageHeader, Tabs, Empty, Badge, Stat, SearchBox, toast, confirmDelete } from '../components/ui';
 import { Letterhead, Bi, Signatures } from '../components/DocParts';
@@ -34,7 +34,7 @@ export default function Purchases() {
     if (pay.amount > poDue(pay.p) + 0.0005) return toast(`More than what is due (${money(poDue(pay.p), s)})`);
     if (pay.method === 'Cheque' && !pay.chequeNo?.trim()) return toast('Enter the cheque number');
     store.upsert('purchases', { ...pay.p, paid: (Number(pay.p.paid) || 0) + pay.amount });
-    const cat = pay.p.lines.some((l) => /board|sheet|mdf|ply|acp|acrylic/i.test(l.description + (L.item(l.itemId)?.category || ''))) ? 'Boards & Sheets' : 'Materials';
+    const cat = pay.p.lines.some((l) => /board|sheet|mdf|ply|acp|acrylic/i.test(l.description + (L.item(l.itemId)?.category || ''))) ? catOf(s, 'Wood and Plywood', 'Boards & Sheets') : /hinge|screw|handle|runner|hardware/i.test(pay.p.lines.map((l) => l.description).join(' ')) ? catOf(s, 'Hardware and Accessories', 'Hardware') : catOf(s, 'Materials');
     const t = store.upsert('txns', { date: today(), kind: 'expense', category: cat, amount: pay.amount, method: pay.method, description: `${pay.p.number} — ${supplier(pay.p.supplierId)?.name || 'Supplier'}`, ref: pay.p.billNo || pay.p.number, jobId: pay.p.jobId });
     if (pay.method === 'Cheque') store.upsert('cheques', { direction: 'issued', chequeNo: pay.chequeNo!, bank: pay.bank, date: pay.chequeDate || today(), amount: pay.amount, party: supplier(pay.p.supplierId)?.name || 'Supplier', status: 'pending', purchaseId: pay.p.id, txnId: t.id, note: pay.p.number });
     setPay(null); toast('Supplier payment recorded in Accounts');

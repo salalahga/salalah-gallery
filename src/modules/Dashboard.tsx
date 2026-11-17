@@ -1,23 +1,22 @@
-import { Hammer, Wallet, AlertTriangle, TrendingUp, FileText, ShoppingCart, Plus, Receipt } from 'lucide-react';
+import { Wallet, AlertTriangle, FileText, ShoppingCart, Plus, Receipt } from 'lucide-react';
 import { useDB } from '../core/store';
 import { useT } from '../core/i18n';
-import { docTotals, finance, invoiceBalance, lastMonths, money, monthLabel, balances, fmtDate } from '../core/calc';
+import { finance, lastMonths, money, monthLabel, balances, fmtDate } from '../core/calc';
 import { daysFrom } from '../core/helpers';
 import { Landmark, Wrench } from 'lucide-react';
+import { projectTrack } from '../core/stages';
+import { BusinessOverview } from '../components/BusinessOverview';
+import { StageDots } from '../components/ProjectStages';
 import { statusMeta, lookup, dueLabel, priorityTone, expiringDocs, expiryLabel } from '../core/helpers';
 import { IdCard } from 'lucide-react';
 import { go } from '../core/router';
-import { Stat, BarChart, Donut, Badge, Avatar, Progress, Empty } from '../components/ui';
+import { BarChart, Donut, Badge, Avatar, Progress, Empty } from '../components/ui';
 
 export default function Dashboard() {
   const db = useDB(); const t = useT(); const s = db.settings; const L = lookup(db);
-  const month = new Date().toISOString().slice(0, 7);
-  const f = finance(db, month);
   const active = db.jobs.filter((j) => !['completed', 'cancelled'].includes(j.status));
-  const receivable = db.invoices.reduce((n, i) => n + Math.max(0, invoiceBalance(i)), 0);
   const low = db.items.filter((i) => i.qty <= i.reorder);
   const docs = expiringDocs(db);
-  const pipeline = db.quotations.filter((q) => q.status === 'sent').reduce((n, q) => n + docTotals(q).total, 0);
   const chart = lastMonths(6).map((m) => { const x = finance(db, m); return { label: monthLabel(m).split(' ')[0], a: x.income, b: x.expense }; });
   const byType = s.workTypes.map((w) => ({ label: w.name, color: w.color, value: active.filter((j) => j.workTypeId === w.id).length })).filter((p) => p.value);
   const hr = new Date().getHours();
@@ -44,12 +43,7 @@ export default function Dashboard() {
         🧾 {db.expenseChat.filter((m) => m.status === 'pending').length} bill photo(s) from staff waiting for approval — open Expense chat</div>}
       {db.selections.some((x) => x.status === 'submitted' && !x.quotationId) && <div className="alert mb" style={{ cursor: 'pointer' }} onClick={() => go('catalog', { selections: '1' })}>
         🎨 {db.selections.filter((x) => x.status === 'submitted' && !x.quotationId).map((x) => `${x.customerName || L.customer(x.customerId)?.name || 'A customer'} chose materials for “${x.title}”`).join(' · ')} — open to make a quotation</div>}
-      <div className="grid g4 mb">
-        <Stat label={`${t('Income')} · ${monthLabel(month)}`} value={money(f.income, s)} icon={<TrendingUp size={20} />} tone="green" sub={`${t('Profit')}: ${money(f.profit, s)}`} />
-        <Stat label={`${t('Expense')} · ${monthLabel(month)}`} value={money(f.expense, s)} icon={<Wallet size={20} />} tone="red" />
-        <Stat label={t('Unpaid invoices')} value={money(receivable, s)} icon={<Receipt size={20} />} tone="wood" sub={`Quotes pending: ${money(pipeline, s)}`} />
-        <Stat label={t('Active jobs')} value={active.length} icon={<Hammer size={20} />} tone="blue" sub={`${low.length} low-stock items`} />
-      </div>
+      <BusinessOverview />
 
       <div className="grid g-main mb">
         <div className="card">
@@ -69,7 +63,7 @@ export default function Dashboard() {
             {active.slice(0, 6).map((j) => { const wt = L.workType(j.workTypeId); const due = dueLabel(j.dueDate); return (
               <li key={j.id} style={{ cursor: 'pointer' }} onClick={() => go('jobs', { id: j.id })}>
                 <span className="dot" style={{ background: wt?.color }} />
-                <div className="grow"><div className="title">{j.title}</div><div className="muted">{j.code} · {L.customer(j.customerId)?.name || '—'}</div><Progress value={j.progress} color={wt?.color} /></div>
+                <div className="grow"><div className="title"><span className="code-tag">{j.code}</span> {j.title}</div><div className="muted">{L.customer(j.customerId)?.name || '—'} · {projectTrack(db, j).next}</div><div className="flex" style={{ gap: 8 }}><StageDots t={projectTrack(db, j)} /><div style={{ flex: 1 }}><Progress value={j.progress} color={wt?.color} /></div></div></div>
                 <div className="right"><Badge tone={statusMeta[j.status].tone}>{statusMeta[j.status].label}</Badge><div className="muted" style={{ marginTop: 4 }}>{due.text}</div></div>
               </li>); })}
             {!active.length && <Empty title="No active jobs" />}
@@ -89,6 +83,15 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {(() => {
+        const rows = db.jobs.filter((j) => j.status !== 'cancelled').map((j) => ({ j, t: projectTrack(db, j) })).filter((r) => r.t.balance > 0.0005 && ['installation', 'completed'].includes(r.j.status)).sort((a, b) => b.t.balance - a.t.balance);
+        return rows.length > 0 && <div className="card mb">
+          <h3><span className="flex"><Wallet size={16} color="#c2410c" />Balance to collect — finished & installed projects</span><b className="neg">{money(rows.reduce((n, r) => n + r.t.balance, 0), s)}</b></h3>
+          <ul className="list">{rows.slice(0, 6).map(({ j, t }) => <li key={j.id} style={{ cursor: 'pointer' }} onClick={() => go('jobs', { id: j.id })}>
+            <span className="code-tag">{j.code}</span><div className="grow"><div className="title">{j.title}</div><div className="muted">{L.customer(j.customerId)?.name || '—'} · {j.status === 'completed' ? `installed ${fmtDate(j.completedDate)}` : 'installing'}</div></div>
+            <b className="neg">{money(t.balance, s)}</b></li>)}</ul>
+        </div>;
+      })()}
       <div className="grid g2 mb">
         <div className="card">
           <h3><span className="flex"><Landmark size={16} />Cash & bank</span><a className="link" href="#/accounts">Accounts</a></h3>

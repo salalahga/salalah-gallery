@@ -3,31 +3,36 @@ import { Camera, Send, Loader2, X, Check, Clock, Ban, ChevronLeft, Wallet, Undo2
 import { store, useDB, today, uid } from '../core/store';
 import { useRoute, go } from '../core/router';
 import type { ExpenseMsg, Settings, Txn } from '../core/types';
-import { fmtDate, money, projectFinance } from '../core/calc';
+import { fmtDate, money, projectFinance, PROJECT_CATS } from '../core/calc';
 import { compressImage } from '../components/Photos';
 import { storePhoto } from '../core/upload';
 import { readBill, type BillInfo } from '../core/ocr';
 import { useRole, useUser } from '../core/session';
 import { Badge, Empty, toast } from '../components/ui';
 
-const EXTRA = ['Labour', 'Subcontractor', 'Transport', 'Materials', 'Boards & Sheets', 'Hardware', 'Paint & Polish', 'Installation', 'Tools', 'Fuel & Transport', 'Other'];
-export const expenseCats = (s: Settings) => [...new Set([...s.expenseCategories.filter((c) => c !== 'Salary'), ...EXTRA])];
+export const expenseCats = (s: Settings) => [...new Set([...s.expenseCategories.filter((c) => c !== 'Salary'), ...PROJECT_CATS])];
 const METHODS = ['Cash', 'Bank', 'Card', 'Cheque', 'Online'];
 
-const GUESS: [RegExp, string][] = [
-  [/\b(ply|plywood|mdf|board|sheets?|hpl|laminates?|acp|acrylic|melamine|veneer|particle)\b/i, 'Boards & Sheets'],
-  [/\b(hinges?|screws?|handles?|runners?|channels?|locks?|nails?|bolts?|hardware|brackets?|knobs?)\b/i, 'Hardware'],
-  [/\b(paint|polish|pu|lacquer|primer|thinner|putty|sealer|stain)\b/i, 'Paint & Polish'],
-  [/\b(petrol|diesel|fuel|gasoline|taxi|pickup|truck|freight|transport|delivery|trip|shell|oman ?oil|super ?9[158]|m9[158]|litres?|ltrs?)\b/i, 'Fuel & Transport'],
-  [/\b(labou?r|helper|wages?|coolie|mason)\b/i, 'Labour'],
-  [/\b(sub-?contract(or)?|contractor)\b/i, 'Subcontractor'],
-  [/\b(tools?|blades?|bits?|drill|saw|router|grinder|sandpaper|discs?)\b/i, 'Tools'],
-  [/\b(glue|silicone|foam|tape|edge ?band|fevicol|adhesive)\b/i, 'Materials'],
+// keyword → categories to try, newest names first (older setups keep their own names)
+const GUESS: [RegExp, string[]][] = [
+  [/\b(ply|plywood|mdf|board|sheets?|hpl|laminates?|acp|acrylic|melamine|veneer|particle|timber|wood)\b/i, ['Wood and Plywood', 'Boards & Sheets']],
+  [/\b(hinges?|screws?|handles?|runners?|channels?|locks?|nails?|bolts?|hardware|brackets?|knobs?|accessor(y|ies))\b/i, ['Hardware and Accessories', 'Hardware']],
+  [/\b(polish|pu|lacquer|sealer|stain|varnish)\b/i, ['Polishing', 'Paint & Polish']],
+  [/\b(paint|primer|thinner|putty|emulsion|enamel)\b/i, ['Painting', 'Paint & Polish']],
+  [/\b(petrol|diesel|fuel|gasoline|taxi|pickup|truck|freight|transport|delivery|trip|shell|oman ?oil|super ?9[158]|m9[158]|litres?|ltrs?)\b/i, ['Transportation', 'Fuel & Transport', 'Transport']],
+  [/\b(carpenter|wages?)\b/i, ['Carpenter Wages', 'Labour']],
+  [/\b(labou?r|helper|coolie|mason)\b/i, ['Labour']],
+  [/\b(sub-?contract(or)?|contractor|outsourc\w*)\b/i, ['Outsourced Work', 'Subcontractor']],
+  [/\b(electricity|power|kwh|nama|dhofar power)\b/i, ['Electricity', 'Electricity & Water']],
+  [/\b(install(ation)?|fixing)\b/i, ['Installation']],
+  [/\b(tools?|blades?|bits?|drill|saw|router|grinder|sandpaper|discs?)\b/i, ['Tools']],
+  [/\b(glue|silicone|foam|tape|edge ?band|fevicol|adhesive)\b/i, ['Materials']],
 ];
 /** Best category for a bill text, limited to the categories that exist. */
 export function guessCategory(text: string, cats: string[]) {
-  for (const [re, c] of GUESS) if (re.test(text)) { const hit = cats.find((x) => x.toLowerCase() === c.toLowerCase()) || (c === 'Fuel & Transport' ? cats.find((x) => /transport/i.test(x)) : undefined); if (hit) return hit; }
-  return cats.includes('Materials') ? 'Materials' : cats[0];
+  const has = (c: string) => cats.find((x) => x.toLowerCase() === c.toLowerCase());
+  for (const [re, cs] of GUESS) if (re.test(text)) for (const c of cs) { const hit = has(c); if (hit) return hit; }
+  return has('Materials') || has('Other Expenses') || cats[0];
 }
 /** Amount written in a message: "OMR 12.5", "12.500 RO", "= 45", or a number at the very end ("petrol 5"). */
 export function parseAmount(text: string): number | undefined {

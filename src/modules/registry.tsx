@@ -67,4 +67,8 @@ export const modules: ModuleDef[] = [
   { id: 'settings', label: 'Settings', group: 'System', icon: Cog, component: SettingsPage, roles: OWNER, desc: 'Business profile, work types, backup' },
 ];
 
-export const modulesFor = (role: Role) => modules.filter((m) => !m.roles || m.roles.includes(role));
+/** Modules a login may open. Viewers see the modules the owner gave them (never system settings). */
+export const SYSTEM_MODULES = ['settings', 'plugins', 'automations'];
+export const modulesFor = (role: Role, allowed?: string[]) => role === 'viewer'
+  ? modules.filter((m) => !SYSTEM_MODULES.includes(m.id) && (allowed?.includes('*') || allowed?.includes(m.id)))
+  : modules.filter((m) => !m.roles || m.roles.includes(role));

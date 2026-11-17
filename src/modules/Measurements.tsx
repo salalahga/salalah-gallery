@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Plus, Trash2, Printer, MapPin, Crosshair, FileText, Ruler, Loader2 } from 'lucide-react';
 import { store, useDB, nextNumber, today, uid } from '../core/store';
-import { go } from '../core/router';
+import { go, useRoute } from '../core/router';
 import type { Measurement, MeasureItem, Quotation } from '../core/types';
 import { fmtDate } from '../core/calc';
 import { lookup } from '../core/helpers';
@@ -20,6 +20,8 @@ export default function Measurements() {
   const [tab, setTab] = useState<'all' | Measurement['status']>('all');
   const [edit, setEdit] = useState<Partial<Measurement> | null>(null);
   const [view, setView] = useState<Measurement | null>(null);
+  const { params } = useRoute();
+  useEffect(() => { if (params.id) { const m = db.measurements.find((x) => x.id === params.id); if (m) setView(m); go('measurements'); } }, [params.id]); // eslint-disable-line react-hooks/exhaustive-deps
   const [locating, setLocating] = useState(false);
 
   const blank = (): Partial<Measurement> => ({ number: nextNumber('MS', db.measurements.map((x) => x.number)), date: today(), status: 'new', unit: 'mm', measuredBy: me, items: [{ id: uid(), name: '', qty: 1 }], photos: [] });

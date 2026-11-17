@@ -3,6 +3,7 @@ import { Plus, Trash2, Download, Upload, RotateCcw } from 'lucide-react';
 import { store, useDB, exportBackup, uid } from '../core/store';
 import type { WorkType, DB } from '../core/types';
 import { PageHeader, Field, Tabs, toast } from '../components/ui';
+import { suggestedOverheadRate } from '../core/calc';
 import { useT } from '../core/i18n';
 import Users from './Users';
 import { AutoBackup, ActivityLog } from './SettingsExtra';
@@ -45,6 +46,9 @@ export default function SettingsPage() {
         <Field label="Arabic on printed documents"><select value={s.arabicOnDocs === false ? '0' : '1'} onChange={(e) => set({ arabicOnDocs: e.target.value === '1' })}><option value="1">Yes — English + Arabic</option><option value="0">English only</option></select></Field>
         <Field label="Warn before staff documents expire (days)"><input type="number" value={s.docExpiryDays ?? 30} onChange={(e) => set({ docExpiryDays: +e.target.value })} /></Field>
         <div /><div />
+        <Field label="Project code prefix (e.g. TZ)"><input value={s.projectPrefix ?? 'JOB'} onChange={(e) => set({ projectPrefix: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })} /></Field>
+        <Field label="Project code format"><select value={s.projectCodeYear ? '1' : '0'} onChange={(e) => set({ projectCodeYear: e.target.value === '1' })}><option value="0">{(s.projectPrefix || 'JOB')}-101, -102…</option><option value="1">{(s.projectPrefix || 'JOB')}-{String(new Date().getFullYear()).slice(2)}-001 (with year)</option></select></Field>
+        <div className="muted" style={{ alignSelf: 'end' }}>New projects get the next code automatically; you can still edit it on the project.</div>
         <Field label="Invoice number prefix (empty = plain numbers like 1213)"><input value={s.invoicePrefix ?? ''} onChange={(e) => set({ invoicePrefix: e.target.value })} placeholder="e.g. INV" /></Field>
         <Field label="Plain numbering starts at"><input type="number" value={s.invoiceStart ?? 1} onChange={(e) => set({ invoiceStart: +e.target.value })} /></Field>
         <div />
@@ -81,6 +85,7 @@ export default function SettingsPage() {
           <Field label="Working days / month"><input type="number" value={s.workingDaysPerMonth} onChange={(e) => set({ workingDaysPerMonth: +e.target.value })} /></Field>
           <Field label="Work hours / day"><input type="number" value={s.workHoursPerDay} onChange={(e) => set({ workHoursPerDay: +e.target.value })} /></Field>
           <Field label="Overtime multiplier"><input type="number" step={0.05} value={s.overtimeMultiplier} onChange={(e) => set({ overtimeMultiplier: +e.target.value })} /></Field>
+          <Field label={`Overheads charged to projects (% of value) — last 12 months: ${suggestedOverheadRate(db)}%`}><input type="number" step={0.5} min={0} value={s.overheadRate ?? 0} onChange={(e) => set({ overheadRate: +e.target.value })} /></Field>
           <Field label="Gratuity — days of basic wage per year"><input type="number" value={s.gratuityDaysPerYear ?? 30} onChange={(e) => set({ gratuityDaysPerYear: +e.target.value })} /></Field>
           <Field label="Paid annual leave — days per year"><input type="number" value={s.annualLeaveDays ?? 30} onChange={(e) => set({ annualLeaveDays: +e.target.value })} /></Field>
           <div />

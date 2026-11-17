@@ -10,6 +10,7 @@ import { LinesEditor, DocView } from '../components/DocEditor';
 import { FileText, CheckCircle2, Send } from 'lucide-react';
 import { useT } from '../core/i18n';
 import { useWaText } from '../plugins/hooks';
+import { nextProjectCode } from '../core/stages';
 
 export default function Quotations() {
   const db = useDB(); const s = db.settings; const L = lookup(db); const t = useT(); const { params } = useRoute(); const wa = useWaText();
@@ -31,8 +32,7 @@ export default function Quotations() {
     const saved = store.upsert('quotations', edit as Quotation); setEdit(null); toast('Quotation saved'); return saved; };
   const toJob = (qt: Quotation) => {
     if (qt.jobId && db.jobs.some((j) => j.id === qt.jobId)) { toast('This quotation already has a project'); return go('jobs', { id: qt.jobId }); }
-    const nums = db.jobs.map((j) => parseInt(j.code.replace(/\D/g, ''), 10) || 0);
-    const job = store.upsert('jobs', { code: `JOB-${(nums.length ? Math.max(...nums) : 100) + 1}`, title: qt.title || qt.number, customerId: qt.customerId, workTypeId: qt.items.find((l) => l.workTypeId)?.workTypeId, status: 'design', priority: 'normal', startDate: today(), value: docTotals(qt).total, staffIds: [], details: {}, materials: [], progress: 0, quotationId: qt.id });
+    const job = store.upsert('jobs', { code: nextProjectCode(db, s), stageDates: { design: today() }, step: 5, history: [{ at: new Date().toISOString(), by: 'system', step: 5, status: 'design', note: `From quotation ${qt.number}` }], title: qt.title || qt.number, customerId: qt.customerId, workTypeId: qt.items.find((l) => l.workTypeId)?.workTypeId, status: 'design', priority: 'normal', startDate: today(), value: docTotals(qt).total, staffIds: [], details: {}, materials: [], progress: 0, quotationId: qt.id });
     store.upsert('quotations', { ...qt, status: 'accepted', jobId: job.id }); toast('Job created from quotation'); go('jobs', { id: job.id });
   };
   const toInvoice = (qt: Quotation) => {

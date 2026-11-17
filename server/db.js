@@ -15,6 +15,8 @@ const SCHEMA = [
   // who changed what
   `CREATE TABLE IF NOT EXISTS audit (id TEXT PRIMARY KEY, at BIGINT NOT NULL, user_id TEXT, user_name TEXT, col TEXT NOT NULL, rec_id TEXT, action TEXT NOT NULL, label TEXT)`,
   `CREATE INDEX IF NOT EXISTS audit_at ON audit (at)`,
+  // read-only viewer logins: which modules they may open (JSON array, ["*"] = everything)
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS modules TEXT`,
 ];
 
 /**

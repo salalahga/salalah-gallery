@@ -7,6 +7,7 @@ export const AR: Record<string, string> = {
   QUOTATION: 'عرض سعر', INVOICE: 'فاتورة', 'TAX INVOICE': 'فاتورة ضريبية', RECEIPT: 'سند قبض', 'ADVANCE RECEIPT': 'سند قبض مقدم',
   'DELIVERY NOTE': 'مذكرة تسليم', 'PURCHASE ORDER': 'أمر شراء', 'Bill to': 'إلى', 'Deliver to': 'التسليم إلى', 'Received from': 'استلمنا من', Supplier: 'المورد',
   Date: 'التاريخ', 'Valid until': 'صالح حتى', Due: 'تاريخ الاستحقاق', Subject: 'الموضوع', Description: 'البيان', Qty: 'الكمية', Unit: 'الوحدة',
+  Items: 'البنود', 'Material charges': 'تكلفة المواد', 'Labour charges': 'أجور العمل', 'Additional charges': 'رسوم إضافية',
   Rate: 'السعر', Amount: 'المبلغ', Subtotal: 'المجموع الفرعي', Discount: 'الخصم', VAT: 'ضريبة القيمة المضافة', Total: 'الإجمالي', Paid: 'المدفوع',
   'Balance due': 'الرصيد المستحق', 'Amount in words': 'المبلغ كتابةً', 'Authorised signature': 'التوقيع المعتمد', 'Customer acceptance': 'توقيع العميل',
   'Received by': 'استلم بواسطة', 'Delivered by': 'سلم بواسطة', 'Payment method': 'طريقة الدفع', 'Against': 'مقابل', 'Received in good condition': 'استلمت بحالة جيدة',

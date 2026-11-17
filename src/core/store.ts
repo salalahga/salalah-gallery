@@ -127,6 +127,8 @@ async function pullChanges() {
 let onSessionExpired: () => void = () => {};
 
 export const store = {
+  /** View-only logins: every change is refused here (and by the server). */
+  readOnly: false,
   get: () => db,
   subscribe(fn: () => void) { listeners.add(fn); return () => listeners.delete(fn); },
   get mode() { return mode; },
@@ -150,7 +152,7 @@ export const store = {
     clearInterval(syncTimer);
     window.removeEventListener('focus', pullChanges);
     window.removeEventListener('online', pullChanges);
-    mode = 'local'; cacheKey = LOCAL_KEY; outbox = []; db = loadLocal(); emit();
+    mode = 'local'; cacheKey = LOCAL_KEY; outbox = []; store.readOnly = false; db = loadLocal(); emit();
   },
   syncNow: pullChanges,
 
@@ -163,6 +165,7 @@ export const store = {
     await store.replace(next);
   },
   upsert<K extends Collection>(col: K, rec: Partial<DB[K][number]> & { id?: string }): DB[K][number] {
+    if (store.readOnly) { toast('This is a view-only login — nothing can be changed'); return rec as DB[K][number]; }
     const list = db[col] as unknown as Base[];
     let saved: Base;
     if (rec.id && list.some((r) => r.id === rec.id)) {
@@ -177,11 +180,13 @@ export const store = {
     return saved as DB[K][number];
   },
   remove(col: Collection, id: string) {
+    if (store.readOnly) { toast('This is a view-only login — nothing can be changed'); return; }
     db = { ...db, [col]: (db[col] as Base[]).filter((r) => r.id !== id) };
     queue({ kind: 'del', col, id });
     persist();
   },
   setSettings(patch: Partial<Settings>) {
+    if (store.readOnly) return;
     db = { ...db, settings: { ...db.settings, ...patch } };
     queue({ kind: 'settings', data: db.settings });
     persist();

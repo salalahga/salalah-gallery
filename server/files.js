@@ -4,15 +4,15 @@
 import crypto from 'node:crypto';
 import { UPSERT } from './db.js';
 
-const MAX_BYTES = 4 * 1024 * 1024;
-const DATA_URL = /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=]+)$/;
+const MAX_BYTES = 10 * 1024 * 1024;
+const DATA_URL = /^data:(image\/(?:jpeg|png|webp|gif)|application\/pdf);base64,([A-Za-z0-9+/=]+)$/;
 
 export function createFiles(db, { tick }) {
   async function save(dataUrl, userId) {
     const m = DATA_URL.exec(String(dataUrl || ''));
-    if (!m) throw Object.assign(new Error('Only JPEG, PNG, WebP or GIF images can be uploaded'), { status: 400 });
+    if (!m) throw Object.assign(new Error('Only pictures (JPEG, PNG, WebP, GIF) or PDF files can be uploaded'), { status: 400 });
     const size = Math.floor((m[2].length * 3) / 4);
-    if (size > MAX_BYTES) throw Object.assign(new Error('Image is too large (max 4 MB)'), { status: 413 });
+    if (size > MAX_BYTES) throw Object.assign(new Error('File is too large (max 10 MB)'), { status: 413 });
     const id = crypto.randomBytes(16).toString('hex');
     await db.run('INSERT INTO files (id, mime, data, size, created_at, created_by) VALUES (?, ?, ?, ?, ?, ?)', [id, m[1], m[2], size, Date.now(), userId || null]);
     return `/api/files/${id}`;

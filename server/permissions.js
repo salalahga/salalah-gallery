@@ -3,15 +3,44 @@
 //   manager — everything except payroll (payslips/advances), settings and users
 //   staff   — sees jobs, own tasks and the team; can update only tasks and service visits assigned
 //             to them and record their own site measurements
+//   viewer  — read-only. "Owner viewer" sees everything (modules ['*']); other viewers only the
+//             modules the owner ticked. A viewer can never create, change or delete anything.
 export const COLLECTIONS = ['customers', 'jobs', 'tasks', 'staff', 'attendance', 'advances', 'payslips', 'quotations', 'invoices', 'txns', 'items', 'sales', 'socialAccounts', 'socialPosts', 'suppliers', 'purchases', 'receipts', 'deliveries', 'measurements', 'cheques', 'creditNotes', 'services', 'recurring', 'brands', 'catalog', 'selections', 'expenseChat'];
 const ALL = new Set(COLLECTIONS);
 const MANAGER = new Set(COLLECTIONS.filter((c) => !['payslips', 'advances'].includes(c)));
 const STAFF_READ = new Set(['jobs', 'tasks', 'staff', 'items', 'customers', 'measurements', 'services', 'brands', 'catalog', 'expenseChat']);
 
+// What each app module needs to read (for viewers with chosen modules).
+export const MODULE_COLS = {
+  dashboard: ['jobs', 'tasks', 'invoices', 'txns', 'quotations', 'items', 'staff', 'customers', 'cheques', 'services', 'selections', 'expenseChat', 'purchases', 'receipts', 'sales', 'suppliers', 'creditNotes'],
+  jobs: ['jobs', 'customers', 'tasks', 'staff', 'items', 'txns', 'invoices', 'receipts', 'quotations', 'expenseChat', 'measurements', 'selections', 'catalog', 'brands', 'creditNotes'],
+  expchat: ['expenseChat', 'jobs', 'txns'], tasks: ['tasks', 'jobs', 'staff'], measurements: ['measurements', 'customers', 'jobs', 'staff'],
+  services: ['services', 'customers', 'jobs', 'staff', 'invoices'], catalog: ['catalog', 'brands', 'selections', 'customers', 'jobs', 'items'],
+  purchases: ['purchases', 'suppliers', 'items', 'jobs', 'txns', 'cheques'], inventory: ['items'],
+  staff: ['staff', 'tasks', 'jobs', 'attendance', 'payslips', 'advances'], attendance: ['attendance', 'staff'], payroll: ['payslips', 'advances', 'staff', 'attendance'],
+  customers: ['customers', 'jobs', 'quotations', 'invoices', 'receipts', 'creditNotes', 'sales', 'services', 'measurements', 'txns'],
+  quotations: ['quotations', 'customers', 'jobs', 'invoices', 'receipts'], invoices: ['invoices', 'customers', 'jobs', 'receipts', 'creditNotes'],
+  documents: ['receipts', 'deliveries', 'cheques', 'creditNotes', 'customers', 'invoices', 'jobs', 'quotations'], sales: ['sales', 'items', 'customers'],
+  accounts: ['txns', 'jobs', 'cheques', 'recurring', 'receipts', 'sales', 'advances', 'expenseChat'],
+  reports: ['invoices', 'purchases', 'suppliers', 'customers', 'staff', 'attendance', 'creditNotes', 'sales', 'receipts', 'txns', 'cheques', 'jobs', 'quotations'],
+  social: ['socialAccounts', 'socialPosts', 'jobs'], website: ['items'],
+};
+export const VIEWER_MODULES = Object.keys(MODULE_COLS);
+function viewerCols(modules) {
+  const m = Array.isArray(modules) ? modules : [];
+  if (m.includes('*')) return ALL;
+  return new Set(m.flatMap((id) => MODULE_COLS[id] || []));
+}
 export const isCollection = (col) => ALL.has(col);
-export const canRead = (role, col) => (role === 'admin' ? ALL : role === 'manager' ? MANAGER : STAFF_READ).has(col);
+/** user = the users row (or a role string, for older callers). */
+export const canRead = (user, col) => {
+  const role = typeof user === 'string' ? user : user.role;
+  if (role === 'viewer') return viewerCols(typeof user === 'string' ? [] : user.modules).has(col);
+  return (role === 'admin' ? ALL : role === 'manager' ? MANAGER : STAFF_READ).has(col);
+};
 
 export function canWrite(user, col, before, after) {
+  if (user.role === 'viewer') return false;
   if (user.role === 'admin') return ALL.has(col);
   if (user.role === 'manager') return MANAGER.has(col);
   if (!user.staff_id) return false;

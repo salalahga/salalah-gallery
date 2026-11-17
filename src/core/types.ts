@@ -2,7 +2,10 @@ export type ID = string;
 
 export interface Base { id: ID; createdAt: string; updatedAt?: string }
 
-export interface Customer extends Base { name: string; phone?: string; email?: string; address?: string; type?: string; notes?: string }
+export interface Customer extends Base { name: string; phone?: string; email?: string; address?: string; type?: string; notes?: string;
+  /** Customer ID shown on documents (C-0001…). */ code?: string; whatsapp?: string; photos?: Photo[]; attachments?: Attachment[] }
+/** A stored file (drawing, design, PDF, document). */
+export interface Attachment { id: ID; url: string; name: string; type: string; at: string; kind?: string }
 
 export interface WorkType { id: ID; name: string; color: string; unit: string; rate: number; fields: string[] }
 
@@ -16,6 +19,14 @@ export interface Job extends Base {
   photos?: Photo[]; cutting?: CuttingList;
   /** Warranty given on completion (months) and the day the project was completed. */
   warrantyMonths?: number; completedDate?: string;
+  /** Day the project first reached each status (stage dates), and stages marked done by hand. */
+  stageDates?: Partial<Record<JobStatus, string>>; stageDone?: { quote?: string; billing?: string };
+  /** Detailed workflow step 1–20 (see core/workflow.ts) and its change history (date, time, user). */
+  step?: number; history?: { at: string; by?: string; step?: number; status?: JobStatus; note?: string }[];
+  /** Daily work updates from the workshop / site. */
+  updates?: { id: ID; at: string; by?: string; text: string; photos?: string[] }[];
+  siteAddress?: string; description?: string; /** Estimated cost budget for the project. */ budget?: number;
+  attachments?: Attachment[];
 }
 
 export type TaskStatus = 'todo' | 'doing' | 'review' | 'done';
@@ -24,7 +35,7 @@ export interface Task extends Base { title: string; jobId?: ID; staffId?: ID; st
   spent?: number }
 
 export type SalaryType = 'monthly' | 'daily' | 'hourly';
-export interface Photo { id: ID; url: string; kind: 'before' | 'progress' | 'after' | 'site'; caption?: string; at: string }
+export interface Photo { id: ID; url: string; kind: 'before' | 'progress' | 'after' | 'site' | 'drawing' | 'document'; caption?: string; at: string }
 export interface CutPart { id: ID; name: string; length: number; width: number; qty: number; grain?: boolean }
 export interface CuttingList { sheetL: number; sheetW: number; kerf: number; material?: string; itemId?: ID; parts: CutPart[] }
 export interface StaffDoc { id: ID; type: string; number?: string; expiry?: string }
@@ -46,7 +57,7 @@ export interface Payslip extends Base {
   bonus: number; deductions: number; advance: number; net: number; paid: boolean; paidDate?: string;
 }
 
-export interface LineItem { id: ID; description: string; workTypeId?: ID; qty: number; unit: string; rate: number }
+export interface LineItem { id: ID; description: string; workTypeId?: ID; qty: number; unit: string; rate: number; /** item (default), material, labour or additional charge */ kind?: 'item' | 'material' | 'labour' | 'additional' }
 export type QuoteStatus = 'draft' | 'sent' | 'accepted' | 'rejected';
 export interface Quotation extends Base {
   number: string; date: string; validUntil?: string; customerId?: ID; title: string; items: LineItem[]; discount: number; vat: number;
@@ -98,6 +109,10 @@ export interface Settings {
   logoLight?: string; poBox?: string; paymentInfo?: string;
   /** Invoice numbering: empty prefix = plain numbers (1212, 1213…) continuing from invoiceStart. */
   invoicePrefix?: string; invoiceStart?: number;
+  /** Project codes: PREFIX-101 … or PREFIX-26-001 with the year. */
+  projectPrefix?: string; projectCodeYear?: boolean;
+  /** Overheads (rent, electricity, office…) charged to each project as % of its value, for net profit. */
+  overheadRate?: number; catsV2?: boolean;
   businessNameAr?: string; addressAr?: string; arabicOnDocs?: boolean; docExpiryDays?: number;
   /** Cash & bank balances start from these amounts on openingDate. */
   openingCash?: number; openingBank?: number; openingDate?: string;

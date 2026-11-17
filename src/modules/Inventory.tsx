@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Plus, Trash2, Minus, Boxes, AlertTriangle, Package } from 'lucide-react';
 import { store, useDB } from '../core/store';
 import type { Item } from '../core/types';
-import { money } from '../core/calc';
+import { money, catOf } from '../core/calc';
 import { Modal, Field, PageHeader, Badge, Empty, Tabs, SearchBox, Stat, toast, confirmDelete } from '../components/ui';
 import { useT } from '../core/i18n';
 import { useCanWrite } from '../core/session';
@@ -19,7 +19,7 @@ export default function Inventory() {
   const purchase = (i: Item) => {
     const n = Number(prompt(`Purchase quantity for ${i.name} (${i.unit})`, '10')); if (!n) return;
     store.upsert('items', { ...i, qty: i.qty + n });
-    store.upsert('txns', { date: new Date().toISOString().slice(0, 10), kind: 'expense', category: i.category === 'Hardware' ? 'Hardware' : 'Boards & Sheets', amount: n * i.cost, method: 'Cash', description: `Purchase ${n} ${i.unit} ${i.name}` });
+    store.upsert('txns', { date: new Date().toISOString().slice(0, 10), kind: 'expense', category: /hardware/i.test(i.category) ? catOf(s, 'Hardware and Accessories', 'Hardware') : catOf(s, 'Wood and Plywood', 'Boards & Sheets'), amount: n * i.cost, method: 'Cash', description: `Purchase ${n} ${i.unit} ${i.name}` });
     toast('Stock added and expense recorded');
   };
   return (
