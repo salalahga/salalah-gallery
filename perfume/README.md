@@ -1,4 +1,4 @@
-# Perfume Business Management System
+# Belle Âme — Perfume Business Management System
 
 One backend and one PostgreSQL database for a perfume retailer in Oman. Three apps use it:
 

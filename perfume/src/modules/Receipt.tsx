@@ -11,6 +11,7 @@ export function Receipt({ saleId, onClose }: { saleId: string; onClose: () => vo
       {!s ? <Empty>Loading…</Empty> : (
         <div id="receipt" style={{ maxWidth: 380, margin: '0 auto', fontSize: 13 }}>
           <div style={{ textAlign: 'center' }}>
+            <img src="/brand/logo-dark.png" alt={b.name} style={{ height: 96, display: 'block', margin: '0 auto 6px' }} />
             <h2 style={{ marginBottom: 0 }}>{b.name}</h2>
             {b.nameAr && <div style={{ fontFamily: 'Noto Kufi Arabic, sans-serif' }}>{b.nameAr}</div>}
             <div className="small">{b.address}{b.phone && ` · ${b.phone}`}</div>

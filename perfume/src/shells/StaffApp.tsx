@@ -18,7 +18,7 @@ export function StaffApp() {
   return (
     <div className="mobile">
       <div className="head">
-        <div className="row"><div className="grow"><div style={{ fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--gold-2)' }}>{me.settings.business.name}</div><div className="small" style={{ color: '#a49d8c' }}>{me.user.name} · {profile?.employee?.job_title || me.user.role}</div></div><LangPick /></div>
+        <div className="row"><img src="/brand/mark.png" alt="" width="44" height="44" /><div className="grow"><div style={{ fontFamily: 'var(--serif)', fontSize: 22, color: 'var(--gold-2)' }}>{me.settings.business.name}</div><div className="small" style={{ color: '#a49d8c' }}>{me.user.name} · {profile?.employee?.job_title || me.user.role}</div></div><LangPick /></div>
       </div>
       {profile && !linked && <div className="alert" style={{ marginBottom: 10 }}>Your login is not linked to an employee profile yet. Ask HR or the owner to link it in Users.</div>}
       {tab === 'home' && <Home canPos={can('pos', 'create')} linked={linked} />}

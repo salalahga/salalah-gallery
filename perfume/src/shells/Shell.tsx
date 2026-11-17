@@ -47,7 +47,7 @@ export function Shell({ appName, modules = MODULES }: { appName: string; modules
     <div className="shell">
       <aside className={'side' + (open ? ' open' : '')} onClick={() => setOpen(false)}>
         <div className="brand">
-          <svg width="34" height="34" viewBox="0 0 64 64" aria-hidden="true"><rect x="26" y="8" width="12" height="9" rx="2" fill="#c9a24b" /><rect x="22" y="17" width="20" height="5" rx="1.5" fill="#c9a24b" /><path d="M16 30a8 8 0 0 1 8-8h16a8 8 0 0 1 8 8v20a6 6 0 0 1-6 6H22a6 6 0 0 1-6-6z" fill="none" stroke="#c9a24b" strokeWidth="3" /></svg>
+          <img src="/brand/mark.png" alt="" width="40" height="40" />
           <div><b>{me.settings.business.name}</b><small>{appName}</small></div>
         </div>
         <nav className="nav">

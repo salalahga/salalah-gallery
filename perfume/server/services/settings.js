@@ -1,5 +1,5 @@
 export const DEFAULT_SETTINGS = {
-  business: { name: 'Salalah Perfume Gallery', nameAr: 'معرض صلالة للعطور', address: 'Salalah, Sultanate of Oman', phone: '', email: '', vatNumber: '', crNumber: '', receiptFooter: 'Thank you for shopping with us', receiptFooterAr: 'شكراً لتسوقكم معنا' },
+  business: { name: 'Belle Âme', nameAr: 'بيل آم', address: 'Salalah, Sultanate of Oman', phone: '', email: '', vatNumber: '', crNumber: '', receiptFooter: 'Thank you for shopping with us', receiptFooterAr: 'شكراً لتسوقكم معنا' },
   currency: 'OMR',
   // Oman VAT: standard rate 5 % since 16 April 2021. Kept configurable — verify against current Tax Authority rules.
   tax: { defaultRateBp: 500, pricesIncludeVat: true, registered: true },

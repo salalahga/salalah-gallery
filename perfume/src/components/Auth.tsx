@@ -35,13 +35,14 @@ export function AuthGate({ app, title, children }: { app: 'admin' | 'manager' | 
   };
   useEffect(() => { setUnauthorisedHandler(() => load()); load(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const logout = async () => { await api.post('/auth/logout').catch(() => {}); setMe(null); setStage('login'); };
-  const name = status?.business.name || 'Perfume Gallery';
+  const name = status?.business.name || 'Belle Âme';
 
   if (stage === 'in' && me) return <SessionCtx.Provider value={{ me, refresh: load, logout }}>{children}<Toasts /></SessionCtx.Provider>;
   return (
     <div className="login">
       <div className="box">
-        <div className="row" style={{ marginBottom: 14 }}><div className="grow"><h1>{name}</h1><div className="muted">{title}</div></div><LangPick /></div>
+        <div className="row" style={{ justifyContent: 'flex-end' }}><LangPick /></div>
+        <div style={{ textAlign: 'center', marginBottom: 16 }}><img src="/brand/logo-light.png" alt={name} style={{ height: 150, maxWidth: '100%' }} /><div className="muted" style={{ marginTop: 6 }}>{title}</div></div>
         {stage === 'loading' && <div className="muted">Loading…</div>}
         {stage === 'setup' && <Setup needsCode={!!status?.setupNeedsCode} onDone={load} />}
         {stage === 'login' && <Login app={app} onDone={load} />}
@@ -68,7 +69,7 @@ function Login({ app, onDone }: { app: string; onDone: () => void }) {
 }
 
 function Setup({ needsCode, onDone }: { needsCode: boolean; onDone: () => void }) {
-  const [f, setF] = useState({ businessName: 'Salalah Perfume Gallery', name: '', username: 'owner', password: '', setupCode: '', demo: true });
+  const [f, setF] = useState({ businessName: 'Belle Âme', name: '', username: 'owner', password: '', setupCode: '', demo: true });
   const [busy, setBusy] = useState(false);
   const set = (k: string, v: unknown) => setF((x) => ({ ...x, [k]: v }));
   const submit = async (e: FormEvent) => { e.preventDefault(); setBusy(true); try { await api.post('/auth/setup', f); onDone(); } catch (er) { toastError(er); } finally { setBusy(false); } };
