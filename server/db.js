@@ -17,6 +17,7 @@ const SCHEMA = [
   `CREATE INDEX IF NOT EXISTS audit_at ON audit (at)`,
   // read-only viewer logins: which modules they may open (JSON array, ["*"] = everything)
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS modules TEXT`,
+  `ALTER TABLE users ADD COLUMN IF NOT EXISTS sv INTEGER NOT NULL DEFAULT 0`,
 ];
 
 /**

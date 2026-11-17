@@ -7,6 +7,7 @@ import { fmtDate, money, projectFinance, PROJECT_CATS } from '../core/calc';
 import { compressImage } from '../components/Photos';
 import { storePhoto } from '../core/upload';
 import { readBill, type BillInfo } from '../core/ocr';
+import { findDuplicates } from '../core/assistant';
 import { useRole, useUser } from '../core/session';
 import { Badge, Empty, toast } from '../components/ui';
 
@@ -128,7 +129,9 @@ function Thread({ jobId, onBack, office, me, user }: { jobId?: string; onBack: (
   };
   /** Office: post a message to Accounts as a project expense. */
   const post = (m: ExpenseMsg, amount: number, category: string, method: string) => {
-    const t = store.upsert('txns', { date: m.date, kind: 'expense', category, amount: +amount.toFixed(3), method, description: m.text || 'Bill', jobId: m.jobId, ref: m.byStaffId && m.byStaffId !== me ? `Chat · ${m.byName}` : 'Chat', photos: m.photos, chatId: m.id } as Txn);
+    const dups = findDuplicates(store.get(), { amount: +amount.toFixed(3), date: m.date, billNo: m.ocr?.billNo, vendor: m.ocr?.vendor, jobId: m.jobId });
+    if (dups.length && !window.confirm(`This bill may already be entered:\n${dups.slice(0, 3).map((t) => `${t.date} · ${t.amount} · ${t.description}`).join('\n')}\n\nAdd it anyway?`)) return;
+    const t = store.upsert('txns', { date: m.date, kind: 'expense', category, amount: +amount.toFixed(3), method, description: m.text || 'Bill', jobId: m.jobId, ref: m.ocr?.billNo || (m.byStaffId && m.byStaffId !== me ? `Chat · ${m.byName}` : 'Chat'), photos: m.photos, chatId: m.id, vendor: m.ocr?.vendor, billNo: m.ocr?.billNo, vat: m.ocr?.vat } as Txn);
     store.upsert('expenseChat', { ...m, amount: +amount.toFixed(3), category, method, status: 'posted', txnId: t.id });
   };
   const send = async (dr: Draft = d, ocr?: ExpenseMsg['ocr']) => {

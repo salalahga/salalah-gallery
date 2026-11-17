@@ -7,6 +7,7 @@ export const SECRET_FIELDS = {
   telegram: ['botToken'],
   email: ['pass'],
   webhooks: ['secret'],
+  waapi: ['token'],
 };
 
 export function createPlugins(db) {
@@ -89,5 +90,24 @@ export function createPlugins(db) {
     if (bad.length) throw new Error(bad.map((b) => b.reason.message).join('; '));
   }
 
-  return { getConfig, setConfig, masked, telegram, telegramFile, email, webhook };
+  // ---------- WhatsApp Business Platform (Meta Cloud API) ----------
+  // Free-form text only reaches a customer who wrote to you in the last 24 hours; otherwise Meta
+  // requires an approved template, so a rule can name one (its {{1}}, {{2}}… come from `params`).
+  const WA_API = process.env.WHATSAPP_API || 'https://graph.facebook.com/v21.0';
+  async function whatsapp({ to, text, template, lang, params }) {
+    const c = (await getConfig()).waapi || {};
+    if (!c.enabled || !c.token || !c.phoneNumberId) throw new Error('WhatsApp Business API plugin is not set up');
+    const num = String(to || '').replace(/\D/g, '').replace(/^00/, '');
+    if (num.length < 8) throw new Error('No valid WhatsApp number');
+    const full = num.length === 8 && c.countryCode ? String(c.countryCode).replace(/\D/g, '') + num : num;
+    const body = template
+      ? { messaging_product: 'whatsapp', to: full, type: 'template', template: { name: template, language: { code: lang || c.lang || 'en' }, ...(params?.length ? { components: [{ type: 'body', parameters: params.map((p) => ({ type: 'text', text: String(p).slice(0, 900) })) }] } : {}) } }
+      : { messaging_product: 'whatsapp', to: full, type: 'text', text: { body: String(text || '').slice(0, 4000), preview_url: true } };
+    const r = await fetch(`${WA_API}/${encodeURIComponent(c.phoneNumberId)}/messages`, { method: 'POST', headers: { Authorization: `Bearer ${c.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error('WhatsApp: ' + (j.error?.message || r.status));
+    return j.messages?.[0]?.id;
+  }
+
+  return { getConfig, setConfig, masked, telegram, telegramFile, email, webhook, whatsapp };
 }

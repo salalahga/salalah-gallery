@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Download, Printer, Percent, Users, Truck, IdCard, ScrollText } from 'lucide-react';
+import { Printer, Percent, Users, Truck, IdCard, ScrollText } from 'lucide-react';
 import { useDB, today } from '../core/store';
 import type { Customer, DB } from '../core/types';
 import { docTotals, fmtDate, invoiceBalance, money, saleTotals, staffEntitlements } from '../core/calc';
@@ -8,6 +8,9 @@ import { daysFrom } from '../core/helpers';
 import { PageHeader, Tabs, Stat, Empty, Badge } from '../components/ui';
 import { CustomerStatement, customerLedger, ledgerBalance } from '../components/Statement';
 import { useRole } from '../core/session';
+import { SalesReport, ProjectPLReport, PurchaseReport, ExpenseReport, PerformanceReport } from './ReportsMore';
+import { ExportButtons } from '../components/Export';
+import { go } from '../core/router';
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 function presets() {
@@ -20,10 +23,6 @@ function presets() {
     { id: 'ty', label: 'This year', from: `${y}-01-01`, to: `${y}-12-31` },
   ];
 }
-const csvDownload = (name: string, rows: (string | number)[][]) => {
-  const blob = new Blob(['﻿' + rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
-};
 
 type VatRow = { date: string; doc: string; party: string; kind: 'Sales' | 'Purchases'; net: number; vat: number };
 /** VAT return lines: output VAT on invoices and POS sales (less credit notes/returns), input VAT on purchases. */
@@ -40,6 +39,8 @@ export function vatRows(db: DB, from: string, to: string): VatRow[] {
     if (inR(x.date)) out.push({ date: x.date, doc: `Sale ${x.number}`, party: cust(x.customerId) === '—' ? 'Walk-in' : cust(x.customerId), kind: 'Sales', net: st.total / (1 + r / 100), vat: st.total - st.total / (1 + r / 100) });
     for (const ret of (x.returns || []).filter((y) => inR(y.date))) { const vat = ret.amount * r / (100 + r); out.push({ date: ret.date, doc: `Return on ${x.number}`, party: 'Walk-in', kind: 'Sales', net: -(ret.amount - vat), vat: -vat }); }
   }
+  for (const t of db.txns.filter((x) => x.kind === 'expense' && Number(x.vat) > 0 && inR(x.date))) out.push({ date: t.date, doc: `Expense ${t.billNo ? 'bill ' + t.billNo : t.ref || ''}`.trim(), party: t.vendor || t.description, kind: 'Purchases', net: t.amount - Number(t.vat), vat: Number(t.vat) });
+  for (const p of db.purchases.filter((x) => x.status !== 'cancelled')) for (const ret of (p.returns || []).filter((y) => inR(y.date))) { const r = Number(p.vat) || 0; const vat = ret.amount * r / (100 + r); out.push({ date: ret.date, doc: `Return on ${p.number}`, party: db.suppliers.find((x) => x.id === p.supplierId)?.name || '—', kind: 'Purchases', net: -(ret.amount - vat), vat: -vat }); }
   for (const p of db.purchases.filter((x) => x.status !== 'cancelled' && inR(x.date))) {
     const total = poTotal(p); const r = Number(p.vat) || 0;
     out.push({ date: p.date, doc: `${p.number}${p.billNo ? ' · bill ' + p.billNo : ''}`, party: db.suppliers.find((x) => x.id === p.supplierId)?.name || '—', kind: 'Purchases', net: total / (1 + r / 100), vat: total - total / (1 + r / 100) });
@@ -49,11 +50,16 @@ export function vatRows(db: DB, from: string, to: string): VatRow[] {
 
 export default function Reports() {
   const role = useRole();
-  const [tab, setTab] = useState<'vat' | 'receivable' | 'payable' | 'staff'>('vat');
+  const [tab, setTab] = useState<'perf' | 'sales' | 'projects' | 'purchases' | 'expenses' | 'vat' | 'receivable' | 'payable' | 'staff'>('perf');
   return (
     <>
-      <PageHeader title="Reports" sub="VAT return, who owes you, what you owe suppliers, and staff gratuity & leave." />
-      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'vat', label: 'VAT return' }, { id: 'receivable', label: 'Customer balances' }, { id: 'payable', label: 'Supplier balances' }, ...(role === 'admin' || role === 'manager' ? [{ id: 'staff' as const, label: 'Gratuity & leave' }] : [])]} /></div>
+      <PageHeader title="Reports" sub="Every report can be filtered by date, compared with the previous period and downloaded as Excel or PDF." actions={<><button className="btn sm" onClick={() => go('finance')}>P&L · Balance sheet · Cash flow →</button><button className="btn sm" onClick={() => go('inventory')}>Inventory reports →</button><button className="btn sm" onClick={() => go('staff')}>Staff reports →</button></>} />
+      <div className="toolbar"><Tabs value={tab} onChange={setTab} tabs={[{ id: 'perf', label: 'Business performance' }, { id: 'sales', label: 'Sales' }, { id: 'projects', label: 'Project P&L' }, { id: 'purchases', label: 'Purchases' }, { id: 'expenses', label: 'Expenses' }, { id: 'vat', label: 'VAT return' }, { id: 'receivable', label: 'Customer balances' }, { id: 'payable', label: 'Supplier balances' }, ...(role === 'admin' || role === 'manager' ? [{ id: 'staff' as const, label: 'Gratuity & leave' }] : [])]} /></div>
+      {tab === 'perf' && <PerformanceReport />}
+      {tab === 'sales' && <SalesReport />}
+      {tab === 'projects' && <ProjectPLReport />}
+      {tab === 'purchases' && <PurchaseReport />}
+      {tab === 'expenses' && <ExpenseReport />}
       {tab === 'vat' && <VatReport />}
       {tab === 'receivable' && <Receivables />}
       {tab === 'payable' && <Payables />}
@@ -73,7 +79,7 @@ function VatReport() {
       <div className="toolbar chips no-print">
         {ps.map((p) => <button key={p.id} className={`chip ${range.from === p.from && range.to === p.to ? 'on' : ''}`} onClick={() => setRange({ from: p.from, to: p.to })}>{p.label}</button>)}
         <input type="date" style={{ width: 'auto' }} value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} /> → <input type="date" style={{ width: 'auto' }} value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} />
-        <button className="btn sm" onClick={() => csvDownload(`vat-${range.from}-${range.to}.csv`, [['Date', 'Document', 'Party', 'Type', 'Net', 'VAT'], ...rows.map((r) => [r.date, r.doc, r.party, r.kind, r.net.toFixed(3), r.vat.toFixed(3)])])}><Download size={14} />CSV</button>
+        <ExportButtons name={`vat-${range.from}-${range.to}`} title="VAT return" sub={`${range.from} to ${range.to} · VAT no. ${s.vatNumber || '—'}`} head={['Date', 'Document', 'Party', 'Type', 'Net', 'VAT']} rows={[...rows.map((r) => [r.date, r.doc, r.party, r.kind, +r.net.toFixed(3), +r.vat.toFixed(3)]), ['', 'Output VAT', '', '', '', +out.toFixed(3)], ['', 'Input VAT', '', '', '', +inp.toFixed(3)], ['', net >= 0 ? 'VAT payable' : 'VAT refundable', '', '', '', +Math.abs(net).toFixed(3)]]} />
         <button className="btn sm" onClick={() => window.print()}><Printer size={14} />Print</button>
       </div>
       {!s.vatNumber && <div className="alert">Add your VAT registration number in Settings → Business so it prints on invoices.</div>}
@@ -111,7 +117,7 @@ function Receivables() {
         <Stat label="Over 60 days late" value={money(tot[3] + tot[4], s)} icon={<Users size={20} />} tone="red" />
         <Stat label="Advances held for customers" value={money(advance, s)} icon={<Users size={20} />} tone="green" sub="paid before invoicing" />
       </div>
-      <div className="card">{rows.length ? <div className="table-wrap"><table className="aging">
+      <div className="card"><div className="flex between"><h3>Customer outstanding (ageing)</h3><ExportButtons name="customer-outstanding" title="Customer outstanding" head={['Customer', 'Phone', ...BUCKETS, 'Total due']} rows={rows.map((r) => [r.c.name, r.c.phone || '', ...r.b.map((v) => +v.toFixed(3)), +r.owed.toFixed(3)])} /></div>{rows.length ? <div className="table-wrap"><table className="aging">
         <thead><tr><th>Customer</th>{BUCKETS.map((b) => <th key={b} className="num">{b}</th>)}<th className="num">Total due</th><th /></tr></thead>
         <tbody>{rows.map((r) => <tr key={r.c.id} className="click" onClick={() => setStmt(r.c)}><td><b>{r.c.name}</b><div className="muted">{r.c.phone}{r.ledger < -0.0005 ? ` · advance ${money(-r.ledger, s)}` : ''}</div></td>
           {r.b.map((v, k) => <td key={k} className={`num ${v > 0 && k >= 3 ? 'neg' : ''}`}>{v ? money(v, s) : '—'}</td>)}<td className="num"><b>{money(r.owed, s)}</b></td><td><ScrollText size={15} /></td></tr>)}
@@ -139,7 +145,7 @@ function Payables() {
         <Stat label="Overdue" value={money(tot.slice(1).reduce((n, x) => n + x, 0), s)} icon={<Truck size={20} />} tone="wood" />
         <Stat label="Cheques you issued, not cleared" value={money(issued.reduce((n, c) => n + c.amount, 0), s)} icon={<Truck size={20} />} tone="blue" sub={`${issued.length} cheques`} />
       </div>
-      <div className="card">{rows.length ? <div className="table-wrap"><table className="aging">
+      <div className="card"><div className="flex between"><h3>Supplier outstanding (ageing)</h3><ExportButtons name="supplier-outstanding" title="Supplier outstanding" head={['Supplier', ...BUCKETS, 'Total due']} rows={rows.map((r) => [r.x.name, ...r.b.map((v) => +v.toFixed(3)), +r.owed.toFixed(3)])} /></div>{rows.length ? <div className="table-wrap"><table className="aging">
         <thead><tr><th>Supplier</th>{BUCKETS.map((b) => <th key={b} className="num">{b}</th>)}<th className="num">Total due</th></tr></thead>
         <tbody>{rows.map((r) => <tr key={r.x.id}><td><b>{r.x.name}</b><div className="muted">{r.x.phone}</div></td>{r.b.map((v, k) => <td key={k} className="num">{v ? money(v, s) : '—'}</td>)}<td className="num"><b>{money(r.owed, s)}</b></td></tr>)}
           <tr className="total-row"><td>Total</td>{tot.map((v, k) => <td key={k} className="num">{money(v, s)}</td>)}<td className="num">{money(tot.reduce((n, x) => n + x, 0), s)}</td></tr></tbody>

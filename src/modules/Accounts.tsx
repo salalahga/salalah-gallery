@@ -109,7 +109,12 @@ export default function Accounts() {
         </div> : <div className="form two">
           <Field label="Type"><select value={edit.kind} onChange={(e) => { const k = e.target.value as Txn['kind']; setEdit({ ...edit, kind: k, category: (k === 'income' ? s.incomeCategories : s.expenseCategories)[0] }); }}><option value="income">Income</option><option value="expense">Expense</option></select></Field>
           <Field label="Date"><input type="date" value={edit.date} onChange={(e) => setEdit({ ...edit, date: e.target.value })} /></Field>
-          <Field label={`Amount (${s.currency})`}><input type="number" min={0} autoFocus value={edit.amount || ''} onChange={(e) => setEdit({ ...edit, amount: +e.target.value })} /></Field>
+          <Field label={`Amount (${s.currency})`}><input type="number" min={0} autoFocus value={edit.amount || ''} onChange={(e) => setEdit({ ...edit, amount: +e.target.value, fx: undefined })} />
+            {edit.fx && <small className="muted">{edit.fx.amount} {edit.fx.currency} × {edit.fx.rate}</small>}</Field>
+          {(s.currencies || []).length > 0 && <Field label="Paid in another currency?"><div className="flex" style={{ gap: 6 }}>
+            <select style={{ width: 90 }} value={edit.fx?.currency || ''} onChange={(e) => { const c = (s.currencies || []).find((x) => x.code === e.target.value); setEdit({ ...edit, fx: c ? { currency: c.code, rate: c.rate, amount: edit.fx?.amount || 0 } : undefined }); }}><option value="">{s.currency}</option>{(s.currencies || []).map((c) => <option key={c.code}>{c.code}</option>)}</select>
+            {edit.fx && <><input type="number" placeholder="amount" value={edit.fx.amount || ''} onChange={(e) => { const a = +e.target.value; setEdit({ ...edit, fx: { ...edit.fx!, amount: a }, amount: +(a * edit.fx!.rate).toFixed(3) }); }} />
+              <input type="number" title="rate" style={{ width: 90 }} value={edit.fx.rate} onChange={(e) => { const r = +e.target.value; setEdit({ ...edit, fx: { ...edit.fx!, rate: r }, amount: +((edit.fx!.amount || 0) * r).toFixed(3) }); }} /></>}</div></Field>}
           <Field label="Category"><select value={edit.category} onChange={(e) => setEdit({ ...edit, category: e.target.value })}>{catOptions.map((c) => <option key={c}>{c}</option>)}</select></Field>
           <Field label="Description" span={3}><input value={edit.description || ''} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
           <Field label="Method"><select value={edit.method} onChange={(e) => setEdit({ ...edit, method: e.target.value, account: undefined })}>{METHODS.map((m) => <option key={m}>{m}</option>)}</select></Field>

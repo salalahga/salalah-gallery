@@ -633,3 +633,41 @@ body.viewer .modal input, body.viewer .modal select, body.viewer .modal textarea
 .updates .u-photos{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
 .updates .u-photos img{width:72px;height:72px;object-fit:cover;border-radius:8px;cursor:zoom-in}
 body.viewer .hero-actions{display:none}
+
+/* Production board */
+.prod-board { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(210px, 1fr); gap: 10px; overflow-x: auto; padding-bottom: 8px; }
+.prod-col { background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px; min-height: 120px; }
+.prod-col-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 4px 8px; font-size: 13px; }
+.prod-card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-bottom: 8px; box-shadow: var(--shadow); display: grid; gap: 4px; }
+.prod-card .title { font-weight: 600; font-size: 13px; }
+.prod-card.done { opacity: .8; cursor: pointer; }
+
+/* Assistant */
+.assistant { display: flex; flex-direction: column; height: calc(100vh - 210px); min-height: 420px; padding: 0; overflow: hidden; }
+.chat-log { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.bubble { max-width: min(640px, 92%); padding: 10px 12px; border-radius: 14px; background: var(--panel-2); border: 1px solid var(--line); font-size: 14px; }
+.bubble.me { align-self: flex-end; background: color-mix(in srgb, var(--wood-2) 16%, var(--panel)); }
+.bubble-img { max-width: 220px; max-height: 220px; border-radius: 10px; display: block; margin-bottom: 6px; object-fit: cover; }
+.ans-rows { list-style: none; margin: 8px 0 0; padding: 0; border-top: 1px solid var(--line); }
+.ans-rows li { display: flex; gap: 8px; align-items: center; padding: 6px 2px; border-bottom: 1px solid var(--line); }
+.ans-rows li span { flex: 1; } .ans-rows li.click { cursor: pointer; } .ans-rows li.click:hover { color: var(--wood); }
+.draft-card { margin-top: 8px; padding: 10px; border-radius: 12px; background: var(--panel); border: 1px dashed var(--wood-2); }
+.form.compact { gap: 8px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); display: grid; }
+.form.compact label { display: grid; gap: 3px; font-size: 12px; color: var(--ink-2); }
+.form.compact input, .form.compact select { padding: 7px 9px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel-2); color: var(--ink); font-size: 13px; }
+table.mini { width: 100%; font-size: 12px; margin-top: 8px; border-collapse: collapse; } table.mini td, table.mini th { padding: 4px 6px; border-bottom: 1px solid var(--line); text-align: left; }
+.chat-input { display: flex; gap: 8px; align-items: center; padding: 10px; border-top: 1px solid var(--line); background: var(--panel-2); }
+.chat-input input:not([type=file]) { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel); }
+.assist-empty { margin: auto; text-align: center; max-width: 560px; color: var(--ink-2); display: grid; gap: 8px; justify-items: center; }
+
+/* Notifications */
+.notif { position: relative; }
+.notif-dot { position: absolute; top: 2px; right: 2px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 9px; background: var(--red); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; }
+.notif-panel { position: absolute; right: 0; top: calc(100% + 6px); width: min(380px, 92vw); max-height: 70vh; display: flex; flex-direction: column; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); z-index: 60; }
+.notif-list { overflow-y: auto; padding-bottom: 6px; }
+.notif-item { display: flex; gap: 8px; align-items: flex-start; width: 100%; text-align: left; padding: 7px 12px; background: none; border: 0; cursor: pointer; font-size: 13px; color: var(--ink-2); }
+.notif-item.new { color: var(--ink); font-weight: 600; } .notif-item:hover { background: var(--panel-2); }
+.notif-item .dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: var(--ink-3); }
+.dot.tone-red { background: var(--red); } .dot.tone-amber { background: var(--amber); } .dot.tone-green { background: var(--green); } .dot.tone-blue { background: var(--blue); }
+.pl-table tr.section td { padding-top: 14px; color: var(--ink-2); }
+@media (max-width: 700px) { .assistant { height: calc(100vh - 170px); } .prod-board { grid-auto-columns: 78vw; } }

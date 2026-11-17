@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { openDb, UPSERT, KV_SET } from './db.js';
-import { hashPassword, verifyPassword, signToken, readToken, cookieMaxAge, loginAllowed, loginFailed, loginOk } from './auth.js';
+import { hashPassword, verifyPassword, signToken, readToken, readTokenFull, cookieMaxAge, loginAllowed, loginFailed, loginOk } from './auth.js';
 import { COLLECTIONS, isCollection, canRead, canWrite, canDelete, redact, mergeProtected, VIEWER_MODULES } from './permissions.js';
 import { createPlugins } from './plugins.js';
 import { createAutomations, DEFAULT_RULES } from './automations.js';
@@ -58,9 +58,9 @@ function getCookie(req) {
   const m = (req.headers.cookie || '').split(';').map((s) => s.trim()).find((s) => s.startsWith(cookieName + '='));
   return m ? decodeURIComponent(m.slice(cookieName.length + 1)) : null;
 }
-function setSession(req, res, userId) {
+function setSession(req, res, userId, version = 0) {
   const secure = req.secure ? '; Secure' : '';
-  res.setHeader('Set-Cookie', `${cookieName}=${encodeURIComponent(signToken(SECRET, userId))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${cookieMaxAge}${secure}`);
+  res.setHeader('Set-Cookie', `${cookieName}=${encodeURIComponent(signToken(SECRET, userId, version))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${cookieMaxAge}${secure}`);
 }
 const parseModules = (v) => { try { const m = JSON.parse(v || '[]'); return Array.isArray(m) ? m : []; } catch { return []; } };
 const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, staffId: u.staff_id || undefined, active: !!u.active, ...(u.role === 'viewer' ? { modules: parseModules(u.modules) } : {}) };
@@ -68,9 +68,9 @@ const cleanModules = (m) => (Array.isArray(m) ? [...new Set(m.filter((x) => x ==
 const ROLES = ['admin', 'manager', 'staff', 'viewer'];
 
 async function auth(req, res, next) {
-  const id = readToken(SECRET, getCookie(req));
-  const user = id && (await db.get('SELECT * FROM users WHERE id = ?', [id]));
-  if (!user || !user.active) return res.status(401).json({ error: 'Please log in' });
+  const tok = readTokenFull(SECRET, getCookie(req));
+  const user = tok && (await db.get('SELECT * FROM users WHERE id = ?', [tok.u]));
+  if (!user || !user.active || (Number(user.sv) || 0) !== tok.v) return res.status(401).json({ error: 'Please log in' });
   req.user = { ...user, modules: parseModules(user.modules) }; next();
 }
 const adminOnly = (req, res, next) => (req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Only the owner can do this' }));
@@ -111,7 +111,7 @@ app.post('/api/login', wrap(async (req, res) => {
   if (!loginAllowed(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
   const u = await db.get('SELECT * FROM users WHERE username = ?', [String(username || '').toLowerCase().trim()]);
   if (!u || !u.active || !verifyPassword(password || '', u.hash)) { loginFailed(key); return res.status(401).json({ error: 'Wrong username or password' }); }
-  loginOk(key); setSession(req, res, u.id);
+  loginOk(key); setSession(req, res, u.id, u.sv);
   void audit(u, 'system', null, 'login', 'Logged in');
   res.json({ user: publicUser(u) });
 }));
@@ -127,7 +127,37 @@ app.post('/api/password', auth, wrap(async (req, res) => {
   const { current, next } = req.body || {};
   if (!verifyPassword(current || '', req.user.hash)) return res.status(400).json({ error: 'Current password is wrong' });
   if (!next || String(next).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
-  await db.run('UPDATE users SET hash = ? WHERE id = ?', [hashPassword(next), req.user.id]);
+  // a new password signs out every other device; this one gets a fresh session
+  const sv = (Number(req.user.sv) || 0) + 1;
+  await db.run('UPDATE users SET hash = ?, sv = ? WHERE id = ?', [hashPassword(next), sv, req.user.id]);
+  setSession(req, res, req.user.id, sv);
+  void audit(req.user, 'users', req.user.id, 'update', 'Password changed');
+  res.json({ ok: true });
+}));
+
+app.post('/api/logout-all', auth, wrap(async (req, res) => {
+  const sv = (Number(req.user.sv) || 0) + 1;
+  await db.run('UPDATE users SET sv = ? WHERE id = ?', [sv, req.user.id]);
+  setSession(req, res, req.user.id, sv);
+  void audit(req.user, 'system', null, 'update', 'Logged out all other devices');
+  res.json({ ok: true });
+}));
+
+// Owner forgot the password: reset it with the server's setup code (SETUP_CODE, known only to whoever runs the server).
+app.post('/api/reset-owner', wrap(async (req, res) => {
+  const { code, username, password } = req.body || {};
+  const key = (req.ip || '') + ':reset';
+  if (!loginAllowed(key)) return res.status(429).json({ error: 'Too many attempts. Try again in 15 minutes.' });
+  const expected = process.env.SETUP_CODE || '';
+  const ok = expected && typeof code === 'string' && code.length === expected.length && crypto.timingSafeEqual(Buffer.from(code), Buffer.from(expected));
+  if (!ok) { loginFailed(key); return res.status(403).json({ error: expected ? 'Wrong setup code' : 'Password reset is not enabled on this server' }); }
+  if (!password || String(password).length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters' });
+  const u = await db.get("SELECT * FROM users WHERE username = ? AND role = 'admin'", [String(username || '').toLowerCase().trim()]);
+  if (!u) { loginFailed(key); return res.status(404).json({ error: 'No owner account with that username' }); }
+  loginOk(key);
+  const sv = (Number(u.sv) || 0) + 1;
+  await db.run('UPDATE users SET hash = ?, sv = ?, active = 1 WHERE id = ?', [hashPassword(password), sv, u.id]);
+  void audit(u, 'users', u.id, 'update', 'Owner password reset with setup code');
   res.json({ ok: true });
 }));
 
@@ -224,10 +254,11 @@ app.put('/api/users/:id', auth, adminOnly, wrap(async (req, res) => {
   const newRole = role ?? u.role;
   if (newRole === 'viewer' && !cleanModules(modules ?? parseModules(u.modules)).length) return res.status(400).json({ error: 'Choose what this viewer may see' });
   if (password !== undefined && String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
-  await db.run('UPDATE users SET name = ?, role = ?, staff_id = ?, active = ?, hash = ? WHERE id = ?', [
+  await db.run('UPDATE users SET name = ?, role = ?, staff_id = ?, active = ?, hash = ?, sv = ? WHERE id = ?', [
     name ?? u.name, role ?? u.role, staffId === undefined ? u.staff_id : staffId || null, active === undefined ? u.active : active ? 1 : 0,
-    password ? hashPassword(password) : u.hash, u.id]);
+    password ? hashPassword(password) : u.hash, (Number(u.sv) || 0) + (password || role && role !== u.role || active === false ? 1 : 0), u.id]);
   await db.run('UPDATE users SET modules = ? WHERE id = ?', [newRole === 'viewer' ? JSON.stringify(cleanModules(modules ?? parseModules(u.modules))) : null, u.id]);
+  if (u.id === req.user.id && password) { const me = await db.get('SELECT sv FROM users WHERE id = ?', [u.id]); setSession(req, res, u.id, me?.sv); }
   void audit(req.user, 'users', u.id, 'update', `${u.username}${password ? ' · password changed' : ''}${role && role !== u.role ? ' · role ' + role : ''}${active === false ? ' · disabled' : ''}`);
   res.json({ user: publicUser(await db.get('SELECT * FROM users WHERE id = ?', [u.id])) });
 }));
@@ -253,6 +284,7 @@ app.post('/api/plugins/:id/test', auth, adminOnly, wrap(async (req, res) => {
   try {
     if (req.params.id === 'telegram') await plugins.telegram(`✅ ${name}: Telegram is connected.`);
     else if (req.params.id === 'email') await plugins.email({ subject: `${name}: email is connected`, text: `This is a test email from ${name}.` });
+    else if (req.params.id === 'waapi') { const c = (await plugins.getConfig()).waapi || {}; if (!c.testTo) return res.status(400).json({ error: 'Enter a test number first' }); await plugins.whatsapp({ to: c.testTo, template: c.testTemplate || 'hello_world', lang: c.testTemplate ? c.lang : 'en_US' }); }
     else if (req.params.id === 'webhooks') await plugins.webhook('test', { message: `Test from ${name}`, business: name });
     else return res.status(400).json({ error: 'This plugin has no test' });
     res.json({ ok: true });
@@ -371,6 +403,51 @@ app.post('/api/public/pick/:token', wrap(async (req, res) => {
   void audit({ id: null, name: `Customer ${after.customerName || ''}`.trim() }, 'selections', sel.id, 'update', `${sel.title} — ${picks.length} picked`);
   void automations.onChange('selections', before, after);
   res.json({ ok: true, submittedAt: after.submittedAt });
+}));
+
+// ---- website enquiries → CRM leads (public; works from the published site or any copy of it) ----
+const enqHits = new Map();
+const enqLimit = (req) => { const k = req.ip || ''; const now = Date.now(); const h = (enqHits.get(k) || []).filter((t) => now - t < 3600e3); h.push(now); enqHits.set(k, h); return h.length <= 8; };
+const cors = (res) => { res.setHeader('Access-Control-Allow-Origin', '*'); res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS'); res.setHeader('Access-Control-Allow-Headers', 'Content-Type'); };
+app.options('/api/public/enquiry', (_req, res) => { cors(res); res.status(204).end(); });
+app.post('/api/public/enquiry', wrap(async (req, res) => {
+  cors(res);
+  const b = req.body || {}; const str = (v, n) => String(v ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+  if (b.website) return res.json({ ok: true }); // honeypot: bots fill the hidden field
+  if (!enqLimit(req)) return res.status(429).json({ error: 'Too many requests, please try again later' });
+  const name = str(b.name, 80); const phone = str(b.phone, 30).replace(/[^\d+ ()-]/g, '');
+  if (!name || phone.replace(/\D/g, '').length < 7) return res.status(400).json({ error: 'Please enter your name and a phone number' });
+  const SOURCES = ['Website', 'WhatsApp', 'Instagram', 'Facebook', 'Google'];
+  const source = SOURCES.find((x) => x.toLowerCase() === str(b.source, 20).toLowerCase()) || 'Website';
+  const enquiry = [str(b.service, 60) && `Service: ${str(b.service, 60)}`, str(b.location, 80) && `Location: ${str(b.location, 80)}`, str(b.message, 1500)].filter(Boolean).join('\n');
+  // same phone already a customer/lead → add to it instead of a duplicate
+  const digits = phone.replace(/\D/g, '').slice(-8);
+  const rows = await db.all("SELECT id, data FROM records WHERE col = 'customers' AND deleted = 0");
+  const found = rows.map((r) => JSON.parse(r.data)).find((c) => digits && [c.phone, c.whatsapp].some((p) => String(p || '').replace(/\D/g, '').endsWith(digits)));
+  const now = new Date().toISOString();
+  const rec = found
+    ? { ...found, leadStatus: !found.leadStatus || ['won', 'lost'].includes(found.leadStatus) ? 'new' : found.leadStatus, enquiry: `${now.slice(0, 10)} (${source}): ${enquiry}\n${found.enquiry || ''}`.slice(0, 4000), source: found.source || source, updatedAt: now }
+    : { id: uid(), createdAt: now, name, phone, email: str(b.email, 120) || undefined, type: 'Individual', source, leadStatus: 'new', enquiry, notes: '' };
+  await db.run(UPSERT, ['customers', rec.id, JSON.stringify(rec), tick(), 0]);
+  void audit({ id: null, name: `Website: ${name}` }, 'customers', rec.id, found ? 'update' : 'create', `Enquiry from ${name}`);
+  void automations.onChange('customers', found || null, rec);
+  void automations.fire('enquiry.received', { customer: rec, enquiry, source });
+  res.json({ ok: true });
+}));
+
+// ---- published website (owner publishes from Website → Publish) ----
+app.put('/api/site', auth, adminOnly, wrap(async (req, res) => {
+  const html = String((req.body || {}).html || '');
+  if (html.length < 100 || html.length > 3e6) return res.status(400).json({ error: 'Website is empty or too large' });
+  await db.run(KV_SET, ['site_html', html, Date.now()]);
+  void audit(req.user, 'system', null, 'update', 'Website published');
+  res.json({ ok: true, url: '/site' });
+}));
+app.get('/site', wrap(async (_req, res) => {
+  const r = await db.get('SELECT value FROM kv WHERE key = ?', ['site_html']);
+  if (!r) return res.status(404).send('Website not published yet');
+  res.setHeader('Content-Type', 'text/html; charset=utf-8'); res.setHeader('Cache-Control', 'no-cache');
+  res.send(r.value);
 }));
 
 // ---- activity log & backups (owner only) ----

@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { LogIn, ShieldCheck, Loader2 } from 'lucide-react';
+import { api } from '../core/api';
 import { session } from '../core/session';
 import { hasLocalData, localSnapshot, useSettings } from '../core/store';
 import { seed } from '../core/seed';
@@ -27,9 +28,13 @@ function Shell({ children }: { children: React.ReactNode }) {
 export function Login({ expired }: { expired?: boolean }) {
   const t = T.en;
   const [u, setU] = useState(''); const [p, setP] = useState(''); const [err, setErr] = useState(''); const [busy, setBusy] = useState(false);
+  const [reset, setReset] = useState<{ code: string; password: string; done?: boolean } | null>(null);
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setBusy(true); setErr('');
-    try { await session.login(u, p); } catch (x) { setErr((x as Error).message || 'Could not reach the server'); } finally { setBusy(false); }
+    try {
+      if (reset) { await api('/api/reset-owner', { method: 'POST', body: { code: reset.code, username: u, password: reset.password } }); setReset(null); setP(''); setErr(''); alert('Password changed — log in with the new password.'); }
+      else await session.login(u, p);
+    } catch (x) { setErr((x as Error).message || 'Could not reach the server'); } finally { setBusy(false); }
   };
   return (
     <Shell>
@@ -37,9 +42,13 @@ export function Login({ expired }: { expired?: boolean }) {
       {expired && <div className="alert">{t.expired}</div>}
       <form onSubmit={submit} className="auth-form">
         <label className="field"><span>{t.user}</span><input autoFocus autoComplete="username" autoCapitalize="none" value={u} onChange={(e) => setU(e.target.value)} required /></label>
-        <label className="field"><span>{t.pass}</span><input type="password" autoComplete="current-password" value={p} onChange={(e) => setP(e.target.value)} required /></label>
+        {!reset && <label className="field"><span>{t.pass}</span><input type="password" autoComplete="current-password" value={p} onChange={(e) => setP(e.target.value)} required /></label>}
+        {reset && <><label className="field"><span>Setup code (from whoever runs the server)</span><input autoComplete="off" value={reset.code} onChange={(e) => setReset({ ...reset, code: e.target.value.trim() })} required /></label>
+          <label className="field"><span>New password (min 8)</span><input type="password" autoComplete="new-password" minLength={8} value={reset.password} onChange={(e) => setReset({ ...reset, password: e.target.value })} required /></label></>}
         {err && <div className="alert error">{err}</div>}
-        <button className="btn primary block" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}{t.login}</button>
+        <button className="btn primary block" disabled={busy}>{busy ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}{reset ? 'Set new owner password' : t.login}</button>
+        <button type="button" className="btn ghost block" onClick={() => { setReset(reset ? null : { code: '', password: '' }); setErr(''); }}>{reset ? 'Back to login' : 'Forgot password?'}</button>
+        {!reset && <p className="muted" style={{ fontSize: 12, margin: 0 }}>Staff and viewers: ask the owner to set a new password in Settings → Users.</p>}
       </form>
     </Shell>
   );

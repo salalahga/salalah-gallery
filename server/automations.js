@@ -30,6 +30,8 @@ export const TRIGGERS = {
   'cheque.due': 'Cheque due today (daily)',
   'selection.submitted': 'Customer submitted a material selection',
   'expense.claimed': 'Staff sent a bill photo for approval',
+  'enquiry.received': 'New enquiry from the website form',
+  'delivery.created': 'Delivery note issued',
 };
 
 const id = () => crypto.randomBytes(6).toString('hex');
@@ -47,6 +49,12 @@ export const DEFAULT_RULES = [
   { name: 'New site measurement', trigger: 'measurement.created', actions: [{ type: 'telegram', template: '📐 New site measurement {{measurement.number}} by {{staff.name}} for {{customer.name}} — {{measurement.site}}' }] },
   { name: 'Customer picked materials', trigger: 'selection.submitted', actions: [{ type: 'telegram', template: '🎨 {{customer.name}} chose {{count}} item(s) for "{{selection.title}}": {{picks}}' }] },
   { name: 'Staff bill photo to approve', trigger: 'expense.claimed', actions: [{ type: 'telegram', template: '🧾 {{staff.name}} sent a bill for {{job.code}}: {{msg.text}} — {{amount}}. Open Expense chat to approve.' }] },
+  { name: 'New website enquiry', trigger: 'enquiry.received', actions: [{ type: 'telegram', template: '📥 New enquiry ({{source}}) from {{customer.name}} {{customer.phone}}\n{{enquiry}}' }] },
+  { name: 'WhatsApp welcome to new enquiries', trigger: 'enquiry.received', actions: [{ type: 'whatsapp', to: 'customer', template: 'Hello {{customer.name}}, thank you for contacting {{business}}. We received your request and will call you shortly.' }] },
+  { name: 'WhatsApp the customer their invoice', trigger: 'invoice.created', actions: [{ type: 'whatsapp', to: 'customer', template: 'Dear {{customer.name}}, invoice {{invoice.number}} for {{total}} from {{business}} is ready. Thank you!' }] },
+  { name: 'WhatsApp payment reminder', trigger: 'invoice.overdue', actions: [{ type: 'whatsapp', to: 'customer', template: 'Dear {{customer.name}}, a friendly reminder: invoice {{invoice.number}} has {{balance}} outstanding (due {{invoice.dueDate}}). Thank you — {{business}}' }] },
+  { name: 'WhatsApp project status to customer', trigger: 'job.status_changed', actions: [{ type: 'whatsapp', to: 'customer', template: 'Dear {{customer.name}}, your project {{job.code}} ({{job.title}}) is now: {{to}}. — {{business}}' }] },
+  { name: 'WhatsApp delivery notice', trigger: 'delivery.created', actions: [{ type: 'whatsapp', to: 'customer', template: 'Dear {{customer.name}}, your items ({{delivery.number}}) are on the way / delivered today. — {{business}}' }] },
   { name: 'Send all events to webhooks (n8n / Make / Sheets)', trigger: '*', actions: [{ type: 'webhook' }] },
 ].map((r) => ({ id: id(), enabled: false, ...r }));
 
@@ -66,7 +74,14 @@ export function render(tpl, vars) {
 export function createAutomations(db, plugins, { tick, backup }) {
   async function rules() {
     const r = await db.get('SELECT value FROM kv WHERE key = ?', ['automations']);
-    if (r) return JSON.parse(r.value);
+    if (r) {
+      // rules added in later versions appear once (switched off) in existing setups
+      const list = JSON.parse(r.value); const names = new Set(list.map((x) => x.name));
+      const missing = DEFAULT_RULES.filter((x) => /enquiry|WhatsApp/i.test(x.name) && !names.has(x.name));
+      const done = await db.get('SELECT value FROM kv WHERE key = ?', ['automations_v2']);
+      if (missing.length && !done) { const next = [...list, ...missing]; await db.run(KV_SET, ['automations', JSON.stringify(next), Date.now()]); await db.run(KV_SET, ['automations_v2', '1', Date.now()]); return next; }
+      return list;
+    }
     await db.run(KV_SET, ['automations', JSON.stringify(DEFAULT_RULES), Date.now()]);
     return DEFAULT_RULES;
   }
@@ -89,6 +104,13 @@ export function createAutomations(db, plugins, { tick, backup }) {
       const to = a.to === 'customer' ? vars.customer?.email : a.to;
       if (a.to === 'customer' && !to) return 'skipped (customer has no email)';
       await plugins.email({ to, subject: render(a.subject || '{{event}}', vars), text: render(a.template, vars) }); return 'email sent';
+    }
+    if (a.type === 'whatsapp') {
+      const to = a.to === 'customer' ? (vars.customer?.whatsapp || vars.customer?.phone) : a.to === 'staff' ? vars.staff?.phone : a.to;
+      if (!to) return 'skipped (no WhatsApp number)';
+      const params = (a.params || []).map((p) => render(p, vars));
+      await plugins.whatsapp(a.templateName ? { to, template: a.templateName, lang: a.lang, params } : { to, text: render(a.template, vars) });
+      return 'whatsapp sent';
     }
     if (a.type === 'webhook') { await plugins.webhook(trigger, vars.raw || vars, a.url || undefined); return 'webhook delivered'; }
     if (a.type === 'task') {
@@ -126,6 +148,7 @@ export function createAutomations(db, plugins, { tick, backup }) {
           if (after.status === 'completed') await fire('job.completed', { job, customer, raw });
         }
       }
+      if (col === 'deliveries' && after && !before) await fire('delivery.created', { delivery: after, customer, raw });
       if (col === 'tasks' && after) {
         const staff = await one('staff', after.staffId); const job = await one('jobs', after.jobId);
         if (after.staffId && after.staffId !== before?.staffId) await fire('task.assigned', { task: after, staff, job, raw });
