@@ -5,10 +5,10 @@ import { txnSource } from '../core/ledger';
 import { store, useDB, today, uid } from '../core/store';
 import { go } from '../core/router';
 import type { Job, Txn } from '../core/types';
-import { money, fmtDate, projectFinance, invoiceBalance } from '../core/calc';
+import { money, fmtDate, projectFinance, invoiceBalance, PROJECT_CATS } from '../core/calc';
 import { Badge, Stat, Progress, Empty, Modal, toast, confirmDelete } from './ui';
 
-const EXTRA_CATS = ['Labour', 'Subcontractor', 'Transport', 'Materials', 'Boards & Sheets', 'Hardware', 'Paint & Polish', 'Installation', 'Other'];
+const EXTRA_CATS = PROJECT_CATS;
 
 /**
  * Project accounts for one job: contract value + additional work, money collected, every expense,
@@ -46,8 +46,21 @@ export function ProjectMoney({ job, setJob }: { job: Job; setJob: (j: Job) => vo
         <Stat label="Project value" value={money(f.contract, s)} icon={<Wallet size={20} />} tone="wood" sub={[f.extras ? `${money(f.base, s)} + ${money(f.extras, s)} additional` : 'contract amount', f.credited ? `− ${money(f.credited, s)} credit notes` : ''].filter(Boolean).join(' ')} />
         <Stat label="Collected" value={money(f.collected, s)} icon={<TrendingUp size={20} />} tone="green" sub={`To collect: ${money(f.toCollect, s)}`} />
         <Stat label="Expenses" value={money(f.expenses, s)} icon={<TrendingDown size={20} />} tone="red" sub={[f.materials && `${money(f.materials, s)} stock`, f.labour && `${money(f.labour, s)} staff time`].filter(Boolean).join(' · ') || `${expenses.length} entries`} />
-        <Stat label="Profit" value={<span className={f.profit >= 0 ? 'pos' : 'neg'}>{money(f.profit, s)}</span>} icon={<Scale size={20} />} tone="blue" sub={f.contract ? `${Math.round(f.margin * 100)}% margin · cash in hand ${money(f.cash, s)}` : '—'} />
+        <Stat label="Net profit" value={<span className={f.profit >= 0 ? 'pos' : 'neg'}>{money(f.profit, s)}</span>} icon={<Scale size={20} />} tone="blue" sub={f.contract ? `${Math.round(f.margin * 100)}% margin · cash in hand ${money(f.cash, s)}` : '—'} />
       </div>
+      {f.loss && <div className="alert error mb">⚠️ This project is making a loss of {money(-f.net, s)}{f.overhead ? ' after its share of overheads' : ''}.</div>}
+      {f.overBudget && <div className="alert mb">⚠️ Costs {money(f.expenses, s)} are over the estimated budget {money(f.budget, s)} by {money(f.expenses - f.budget, s)}.</div>}
+      <div className="card flat mb"><div className="table-wrap"><table className="pl-table">
+        <thead><tr><th>Profit & loss</th><th className="num">Estimated</th><th className="num">Actual</th></tr></thead>
+        <tbody>
+          <tr><td>Revenue (contract + additional work{f.credited ? ' − credit notes' : ''})</td><td className="num">{money(f.contract, s)}</td><td className="num">{money(f.contract, s)}</td></tr>
+          <tr><td>Direct costs (materials, labour, other)</td><td className="num">{f.budget ? money(f.budget, s) : <span className="muted">set a budget</span>}</td><td className={`num ${f.overBudget ? 'neg' : ''}`}>{money(f.direct, s)}</td></tr>
+          <tr><td><b>Gross profit</b></td><td className="num">{f.budget ? money(f.contract - f.budget, s) : '—'}</td><td className="num"><b>{money(f.gross, s)}</b> <span className="muted">{f.contract ? `${Math.round(f.grossMargin * 100)}%` : ''}</span></td></tr>
+          <tr><td>Overheads allocated ({f.overheadRate}% of revenue)</td><td className="num">{money(f.overhead, s)}</td><td className="num">{money(f.overhead, s)}</td></tr>
+          <tr className="total-row"><td>Net profit</td><td className="num">{f.estimatedProfit !== undefined ? money(f.estimatedProfit, s) : '—'}</td><td className={`num ${f.net < 0 ? 'neg' : 'pos'}`}>{money(f.net, s)} <span className="muted">{f.contract ? `${Math.round(f.margin * 100)}%` : ''}</span></td></tr>
+          {f.budget > 0 && <tr><td>Budget left</td><td /><td className={`num ${(f.budgetLeft || 0) < 0 ? 'neg' : ''}`}>{money(f.budgetLeft || 0, s)}</td></tr>}
+        </tbody></table></div>
+        <p className="muted" style={{ margin: '6px 0 0', fontSize: 12 }}>Money collected (advances, payments) is not revenue — it only lowers the balance to collect, so nothing is counted twice. Overhead % is set in Settings → Lists & payroll.</p></div>
       <div className="flex between wrap" style={{ marginBottom: 6 }}><span className="muted">Collected {Math.round(pct)}% of project value</span>
         <span className="flex"><button type="button" className="btn sm" onClick={() => { const open = db.invoices.find((i) => i.jobId === job.id && invoiceBalance(i) > 0.0005); go('documents', open ? { receipt: 'new', invoice: open.id } : { receipt: 'new', job: job.id }); }}><HandCoins size={14} />Receive payment</button>
           <button type="button" className="btn sm" onClick={() => go('expchat', { job: job.id })}><MessageSquareText size={14} />Expense chat{db.expenseChat.some((m) => m.jobId === job.id && m.status === 'pending') ? ` (${db.expenseChat.filter((m) => m.jobId === job.id && m.status === 'pending').length} to approve)` : ''}</button>

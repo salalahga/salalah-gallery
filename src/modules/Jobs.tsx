@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Plus, LayoutGrid, List, Trash2, Receipt, MessageCircle, PackageMinus, ListChecks, ArrowRight } from 'lucide-react';
-import { projectTrack, withStatus, nextProjectCode, STAGES, type StageId } from '../core/stages';
+import { projectTrack, nextProjectCode, STAGES, type StageId } from '../core/stages';
 import { StageDots, StageTimeline } from '../components/ProjectStages';
+import { ProjectProgress } from '../components/ProjectProgress';
+import { WORKFLOW, displayStep, logStatus, setStep, stepOf } from '../core/workflow';
+import { useUser } from '../core/session';
+import { Attachments } from '../components/Attachments';
+import { Activity } from 'lucide-react';
 import { store, useDB, nextInvoiceNumber, today, uid, takeAdvances } from '../core/store';
 import { useRole } from '../core/session';
 import { Photos } from '../components/Photos';
@@ -36,7 +41,7 @@ export function blankJob(code: string, workTypeId?: string): Partial<Job> {
 }
 
 export default function Jobs() {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const can = useCanWrite()('jobs');
+  const db = useDB(); const s = db.settings; const L = lookup(db); const can = useCanWrite()('jobs'); const me = useUser()?.name || 'Owner';
   const { params } = useRoute();
   const [view, setView] = useState<'tracker' | 'board' | 'list' | 'accounts'>(can ? 'tracker' : 'board');
   const [type, setType] = useState('all');
@@ -60,12 +65,12 @@ export default function Jobs() {
     const { _tab, ...rec0 } = edit as Job & { _tab?: string }; void _tab;
     // stage dates: the day each status was first reached; the warranty runs from completion
     const before = db.jobs.find((j) => j.id === rec0.id);
-    const rec = !before || before.status !== rec0.status ? withStatus(rec0, rec0.status, today()) : { ...rec0, completedDate: rec0.status === 'completed' ? rec0.completedDate || today() : undefined };
+    const rec = !before ? setStep(rec0, stepOf(rec0 as Job), me, today(), 'Project created') : before.status !== rec0.status ? logStatus(rec0, rec0.status, me, today()) : { ...rec0, completedDate: rec0.status === 'completed' ? rec0.completedDate || today() : undefined };
     store.upsert('jobs', rec as Job); toast('Project saved'); setEdit(null);
   };
   const moveTo = (id: string, status: JobStatus) => {
     const j = db.jobs.find((x) => x.id === id); if (!j || j.status === status) return;
-    store.upsert('jobs', withStatus(j, status, today())); toast(`Moved to ${statusMeta[status].label}`);
+    store.upsert('jobs', logStatus(j, status, me, today())); toast(`Moved to ${statusMeta[status].label}`);
   };
 
   return (
@@ -89,7 +94,7 @@ export default function Jobs() {
                 <div key={j.id} className="kcard" draggable={can} onDragStart={() => setDrag(j.id)} onClick={() => setEdit(structuredClone(j))} style={{ borderTop: `3px solid ${wt?.color || 'var(--line)'}` }}>
                   <div className="flex between"><Badge color={wt?.color}>{wt?.name || 'General'}</Badge><Badge tone={priorityTone[j.priority]}>{j.priority}</Badge></div>
                   <div className="ktitle"><span className="code-tag">{j.code}</span> {j.title}</div>
-                  <div className="muted">{L.customer(j.customerId)?.name || 'No customer'}</div>
+                  <div className="muted">{L.customer(j.customerId)?.name || 'No customer'} · <b>{stepOf(j)}. {WORKFLOW[stepOf(j) - 1].label}</b></div>
                   {(() => { const t = projectTrack(db, j, can); return <div className="flex between" style={{ marginTop: 6 }}><StageDots t={t} />{can && t.balance > 0.0005 && WORK_DONE.includes(j.status) && <Badge tone="red">{money(t.balance, s)} due</Badge>}</div>; })()}
                   <div style={{ marginTop: 8 }}><Progress value={j.progress} color={wt?.color} /></div>
                   <div className="kmeta"><div className="avatars">{j.staffIds.map((id) => { const p = L.staff(id); return p && <Avatar key={id} name={p.name} color={p.color} size={24} />; })}</div><Badge tone={due.tone}>{due.text}</Badge></div>
@@ -116,7 +121,7 @@ export default function Jobs() {
 }
 
 function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>; setJob: (j: Partial<Job>) => void; onSave: () => void; onClose: () => void; readOnly?: boolean }) {
-  const db = useDB(); const s = db.settings; const L = lookup(db); const role = useRole();
+  const db = useDB(); const s = db.settings; const L = lookup(db); const role = useRole(); const me = useUser()?.name || 'Owner';
   const wt = L.workType(job.workTypeId);
   const set = (p: Partial<Job>) => setJob({ ...job, ...p });
   const exists = !!job.id && db.jobs.some((j) => j.id === job.id);
@@ -125,8 +130,8 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
   const materials = job.materials || [];
   const wa = useWaText(); const gcal = usePlugin('gcal').enabled; const maps = usePlugin('maps').enabled; const review = usePlugin('reviews'); const jobcard = usePlugin('jobcard').enabled;
   const [card, setCard] = useState(false);
-  const [tab, setTab] = useState<'details' | 'money'>((job as { _tab?: 'money' })._tab || 'details');
-  const site = job.details?.['Site address'] || cust?.address;
+  const [tab, setTab] = useState<'details' | 'progress' | 'money'>((job as { _tab?: 'money' })._tab || 'details');
+  const site = job.siteAddress || job.details?.['Site address'] || cust?.address;
 
   const issueMaterials = () => {
     let cost = 0;
@@ -186,23 +191,29 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
       {exists && (() => {
         const saved = db.jobs.find((x) => x.id === job.id)!; const t = projectTrack(db, saved, !readOnly && role !== 'staff');
         const mark = (id: 'quote' | 'billing', on: boolean) => { const sd = { ...(saved.stageDone || {}) }; if (on) sd[id] = today(); else delete sd[id]; const n = { ...saved, stageDone: sd }; store.upsert('jobs', n); setJob({ ...job, stageDone: sd }); };
-        const NEXT: Partial<Record<JobStatus, { to: JobStatus; label: string }>> = { enquiry: { to: 'production', label: 'Start work' }, design: { to: 'production', label: 'Start work' }, production: { to: 'installation', label: 'Work finished → Installation' }, finishing: { to: 'installation', label: 'Work finished → Installation' }, installation: { to: 'completed', label: 'Installation done' } };
-        const nx = NEXT[saved.status];
-        const go2 = nx ? () => { const n = withStatus(saved, nx.to, today()); store.upsert('jobs', n); setJob({ ...job, ...n }); toast(`${saved.code}: ${statusMeta[nx.to].label}`); } : undefined;
+        const step = displayStep(saved, t.balance, t.contract);
+        const nxN = step < 18 && saved.status !== 'cancelled' ? step + 1 : 0;
+        const nx = nxN ? { label: `${nxN}. ${WORKFLOW[nxN - 1].label}` } : undefined;
+        const go2 = nx ? () => { const n = setStep(saved, nxN, me, today()); store.upsert('jobs', n); setJob({ ...job, ...n }); toast(`${saved.code}: ${WORKFLOW[nxN - 1].label}`); } : undefined;
         return <div className="card flat stage-card">
           <div className="flex between wrap" style={{ marginBottom: 10 }}>
-            <span className="flex"><span className="code-tag" style={{ fontSize: 14 }}>{saved.code}</span><Badge tone={t.tone}>{t.next}</Badge>{t.late && <Badge tone="red">Past due date {fmtDate(saved.dueDate)}</Badge>}</span>
-            {!readOnly && go2 && <button type="button" className="btn sm primary" onClick={go2}>{nx!.label}<ArrowRight size={14} /></button>}
+            <span className="flex wrap"><span className="code-tag" style={{ fontSize: 14 }}>{saved.code}</span><Badge tone="blue">Step {step}/20 · {WORKFLOW[step - 1].label}</Badge><Badge tone={t.tone}>{t.next}</Badge>{t.late && <Badge tone="red">Past due date {fmtDate(saved.dueDate)}</Badge>}</span>
+            {!readOnly && go2 && <button type="button" className="btn sm primary" onClick={go2}>Next: {nx!.label}<ArrowRight size={14} /></button>}
           </div>
           <StageTimeline t={t} onMark={readOnly ? undefined : mark} />
           {WORK_STARTED.includes(saved.status) && saved.status !== 'completed' && <div className="flex" style={{ gap: 10 }}><span className="muted">Work done</span><div style={{ flex: 1 }}><Progress value={saved.progress || 0} /></div><b>{saved.progress || 0}%</b></div>}
           {!readOnly && role !== 'staff' && t.contract > 0 && <div className="flex wrap muted" style={{ gap: 16, marginTop: 8 }}><span>Value <b>{money(t.contract, s)}</b></span><span>Received <b className="pos">{money(t.collected, s)}</b></span><span>Balance <b className={t.balance > 0.0005 ? 'neg' : ''}>{money(t.balance, s)}</b></span></div>}
         </div>;
       })()}
-      {exists && !readOnly && <div className="toolbar"><div className="tabs">
+      {exists && role !== 'staff' && <div className="toolbar"><div className="tabs">
         <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}><ClipboardList size={15} />Details</button>
+        <button className={tab === 'progress' ? 'on' : ''} onClick={() => setTab('progress')}><Activity size={15} />Progress & updates</button>
         <button className={tab === 'money' ? 'on' : ''} onClick={() => setTab('money')}><Wallet size={15} />Project accounts</button></div></div>}
-      {tab === 'money' && exists && !readOnly ? <ProjectMoney job={job as Job} setJob={(j) => setJob(j)} /> :
+      {exists && role === 'staff' && <div className="toolbar"><div className="tabs">
+        <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}><ClipboardList size={15} />Details</button>
+        <button className={tab === 'progress' ? 'on' : ''} onClick={() => setTab('progress')}><Activity size={15} />Progress & updates</button></div></div>}
+      {tab === 'progress' && exists ? <ProjectProgress job={job as Job} setJob={(j) => setJob(j)} readOnly={readOnly} /> :
+      tab === 'money' && exists && role !== 'staff' ? <ProjectMoney job={job as Job} setJob={(j) => setJob(j)} /> :
       <fieldset className="form" disabled={readOnly}>
         <Field label="Job title" span={2}><input autoFocus value={job.title || ''} onChange={(e) => set({ title: e.target.value })} placeholder="e.g. Kitchen cabinets — Villa 12" /></Field>
         <Field label="Job code"><input value={job.code || ''} onChange={(e) => set({ code: e.target.value })} /></Field>
@@ -213,11 +224,14 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
           <select value={job.customerId || ''} onChange={(e) => set({ customerId: e.target.value })}><option value="">— Select —</option>{db.customers.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select>
         </Field>
         {!readOnly && <Field label={`Project value — contract (${s.currency})`}><input type="number" value={job.value ?? 0} onChange={(e) => set({ value: +e.target.value })} /></Field>}
+        {!readOnly && <Field label={`Estimated budget — cost (${s.currency})`}><input type="number" value={job.budget ?? ''} placeholder="for budget vs actual" onChange={(e) => set({ budget: e.target.value === '' ? undefined : +e.target.value })} /></Field>}
+        <Field label="Site address" span={2}><input value={job.siteAddress ?? job.details?.['Site address'] ?? ''} onChange={(e) => set({ siteAddress: e.target.value })} placeholder="Villa / building, area, city" /></Field>
+        <Field label="Project description" span={3}><textarea rows={2} value={job.description || ''} onChange={(e) => set({ description: e.target.value })} placeholder="What is being made — sizes, materials, finish" /></Field>
         <Field label="Status"><select value={job.status} onChange={(e) => set({ status: e.target.value as JobStatus })}>{[...STATUSES, 'cancelled'].map((x) => <option key={x} value={x}>{statusMeta[x].label}</option>)}</select></Field>
         <Field label="Priority"><select value={job.priority} onChange={(e) => set({ priority: e.target.value as Job['priority'] })}>{['low', 'normal', 'high', 'urgent'].map((x) => <option key={x}>{x}</option>)}</select></Field>
         <Field label={`Progress — ${job.progress || 0}%`}><input type="range" min={0} max={100} step={5} value={job.progress || 0} onChange={(e) => set({ progress: +e.target.value })} style={{ padding: 0 }} /></Field>
         <Field label="Start date"><input type="date" value={job.startDate || ''} onChange={(e) => set({ startDate: e.target.value })} /></Field>
-        <Field label="Due date"><input type="date" value={job.dueDate || ''} onChange={(e) => set({ dueDate: e.target.value })} /></Field>
+        <Field label="Expected completion"><input type="date" value={job.dueDate || ''} onChange={(e) => set({ dueDate: e.target.value })} /></Field>
         <Field label={`Warranty (months)${job.completedDate && job.warrantyMonths ? ` — until ${fmtDate(warrantyEnd(job as Job))}` : ''}`}><input type="number" min={0} value={job.warrantyMonths ?? ''} placeholder="e.g. 12" onChange={(e) => set({ warrantyMonths: e.target.value === '' ? undefined : +e.target.value })} /></Field>
         {wt && wt.fields.length > 0 && <>
           <div className="section-title">{wt.name} details</div>
@@ -249,6 +263,7 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
         <div className="section-title">CNC / board cutting list</div>
         <CuttingListEditor value={job.cutting} onChange={(cutting) => set({ cutting })} items={db.items} s={s} readOnly={readOnly} title={`${job.code || ''} ${job.title || ''}`} />
         <Field label="Notes" span={3}><textarea value={job.notes || ''} onChange={(e) => set({ notes: e.target.value })} /></Field>
+        {!exists && <><div className="section-title">Drawings & designs</div><div className="span-3"><Attachments files={job.attachments || []} kind="drawing" onChange={(attachments) => set({ attachments })} /></div></>}
         {exists && !readOnly && (() => { const sels = db.selections.filter((x) => x.jobId === job.id); return <>
           <div className="section-title">Customer material choices ({sels.length})</div>
           <div className="span-3">
@@ -310,15 +325,15 @@ function ProjectsReport({ list, open }: { list: Job[]; open: (j: Job) => void })
         <div className="stat tone-blue"><div><div className="stat-label">Profit (value − expenses)</div><div className={`stat-value ${sum('profit') >= 0 ? 'pos' : 'neg'}`}>{money(sum('profit'), s)}</div></div></div>
       </div>
       <div className="card"><div className="table-wrap"><table>
-        <thead><tr><th>Project</th><th>Customer</th><th>Status</th><th className="num">Value</th><th className="num">Collected</th><th className="num">To collect</th><th className="num">Expenses</th><th className="num">Profit</th><th className="num">Margin</th></tr></thead>
+        <thead><tr><th>Project</th><th>Customer</th><th>Status</th><th className="num">Value</th><th className="num">Collected</th><th className="num">To collect</th><th className="num">Budget</th><th className="num">Expenses</th><th className="num">Profit</th><th className="num">Margin</th></tr></thead>
         <tbody>{rows.map(({ j, f }) => <tr key={j.id} className="click" onClick={() => open(j)}>
           <td><b>{j.title}</b><div className="muted">{j.code}{f.extras ? ` · +${money(f.extras, s)} additional` : ''}</div></td>
           <td>{L.customer(j.customerId)?.name || '—'}</td><td><Badge tone={statusMeta[j.status].tone}>{statusMeta[j.status].label}</Badge></td>
           <td className="num">{money(f.contract, s)}</td><td className="num pos">{money(f.collected, s)}</td>
-          <td className={`num ${f.toCollect > 0 ? 'neg' : ''}`}>{money(f.toCollect, s)}</td><td className="num">{money(f.expenses, s)}</td>
-          <td className={`num ${f.profit >= 0 ? 'pos' : 'neg'}`}><b>{money(f.profit, s)}</b></td><td className="num">{f.contract ? `${Math.round(f.margin * 100)}%` : '—'}</td>
+          <td className={`num ${f.toCollect > 0 ? 'neg' : ''}`}>{money(f.toCollect, s)}</td><td className="num muted">{f.budget ? money(f.budget, s) : '—'}</td><td className={`num ${f.overBudget ? 'neg' : ''}`}>{money(f.expenses, s)}{f.overBudget && <div><Badge tone="amber">over budget</Badge></div>}</td>
+          <td className={`num ${f.profit >= 0 ? 'pos' : 'neg'}`}><b>{money(f.profit, s)}</b>{f.loss && <div><Badge tone="red">loss</Badge></div>}</td><td className="num">{f.contract ? `${Math.round(f.margin * 100)}%` : '—'}</td>
         </tr>)}</tbody>
-        <tfoot><tr><td colSpan={3}><b>Total</b></td><td className="num"><b>{money(sum('contract'), s)}</b></td><td className="num"><b>{money(sum('collected'), s)}</b></td><td className="num"><b>{money(sum('toCollect'), s)}</b></td><td className="num"><b>{money(sum('expenses'), s)}</b></td><td className="num"><b>{money(sum('profit'), s)}</b></td><td /></tr></tfoot>
+        <tfoot><tr><td colSpan={3}><b>Total</b></td><td className="num"><b>{money(sum('contract'), s)}</b></td><td className="num"><b>{money(sum('collected'), s)}</b></td><td className="num"><b>{money(sum('toCollect'), s)}</b></td><td /><td className="num"><b>{money(sum('expenses'), s)}</b></td><td className="num"><b>{money(sum('profit'), s)}</b></td><td /></tr></tfoot>
       </table></div></div>
     </>
   );
@@ -355,7 +370,7 @@ function Tracker({ list, open }: { list: Job[]; open: (j: Job) => void }) {
           <td><b>{j.title}</b><div className="muted">{L.customer(j.customerId)?.name || '—'}</div></td>
           <td><StageDots t={t} /><div className="muted" style={{ fontSize: 12 }}>{t.doneCount}/{t.stages.length} · {t.current?.short || 'Done'}</div></td>
           <td><div className="mini-progress"><Progress value={t.progress} /><small>{t.progress}%</small></div></td>
-          <td className="next"><Badge tone={t.tone}>{t.next}</Badge></td>
+          <td className="next"><Badge tone={t.tone}>{t.next}</Badge><div className="muted" style={{ fontSize: 12, marginTop: 3 }}>Step {displayStep(j, t.balance, t.contract)}/20 · {WORKFLOW[displayStep(j, t.balance, t.contract) - 1].label}</div></td>
           <td>{j.dueDate ? <span className={t.late ? 'neg' : ''}>{fmtDate(j.dueDate)}</span> : '—'}</td>
           <td className="num">{money(t.contract, s)}</td><td className="num pos">{money(t.collected, s)}</td>
           <td className={`num ${t.balance > 0.0005 ? 'neg' : ''}`}><b>{money(t.balance, s)}</b></td>

@@ -88,6 +88,16 @@ Photos are stored on the server (`/api/files/…`) instead of inside records, so
 
 `/pick/<token>` is a public page (no login). The token is 128-bit random. The page only receives the materials offered in that selection (no prices unless you allow them, nothing else from the database), can only choose among those items, is rate-limited, and is read-only once you close the selection. Web import downloads go through the server with checks that block private and internal addresses.
 
+## ERP additions
+
+- **Logins:** Owner (super admin, the only one who changes data), Manager, Staff, and **View only** — an *Owner viewer* sees everything read-only; other viewers see only the pages ticked for them. The server refuses every change from a viewer and only sends the data their pages need.
+- **20-step project workflow:** New enquiry → Site inspection → Measurement → Quotation prepared → Quotation approved → Advance received → Design → Design approved → Material purchasing → Material ready → Production → Work in progress → Polishing & finishing → Quality inspection → Ready for delivery → Delivery → Installation → Completed → Final payment pending → Closed. Each change is saved with date, time and user (status history); quotation approved and advance received are set automatically, the last two follow the payments. Daily work updates with photos, drawings & designs (pictures or PDF), linked site measurements.
+- **Project fields:** site address, description, estimated budget, expected completion.
+- **Project costing:** categories Wood and Plywood, Hardware and Accessories, Labour, Carpenter Wages, Polishing, Painting, Transportation, Installation, Electricity, Outsourced Work, Other. Revenue = contract + additional work − credit notes; gross profit = revenue − direct costs; net profit = gross − overheads (Settings: % of value, with a suggestion from the last 12 months); estimated vs actual, budget vs actual, loss and over-budget alerts. Advances are never counted as revenue.
+- **Customer profile:** Customer ID (C-0001…), WhatsApp number, projects, quotations, invoices, payments & advances, ledger, documents and photos.
+- **Executive dashboard:** date and project filters; revenue, expenses, net profit, total sales, active / completed / pending projects, customer outstanding, supplier payables, cash, bank, delayed projects, project profitability, pending payments, upcoming deliveries.
+- **Quotations:** item, material, labour and additional-charge lines with their own subtotals on the PDF.
+
 ## Logins & online database
 
 The app has a small Node.js server (`server/`) that provides logins and an online database, so every phone and computer sees the same data.

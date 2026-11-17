@@ -6,7 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { openDb, UPSERT, KV_SET } from './db.js';
 import { hashPassword, verifyPassword, signToken, readToken, cookieMaxAge, loginAllowed, loginFailed, loginOk } from './auth.js';
-import { COLLECTIONS, isCollection, canRead, canWrite, canDelete, redact, mergeProtected } from './permissions.js';
+import { COLLECTIONS, isCollection, canRead, canWrite, canDelete, redact, mergeProtected, VIEWER_MODULES } from './permissions.js';
 import { createPlugins } from './plugins.js';
 import { createAutomations, DEFAULT_RULES } from './automations.js';
 import { buildIcs } from './ical.js';
@@ -62,13 +62,16 @@ function setSession(req, res, userId) {
   const secure = req.secure ? '; Secure' : '';
   res.setHeader('Set-Cookie', `${cookieName}=${encodeURIComponent(signToken(SECRET, userId))}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${cookieMaxAge}${secure}`);
 }
-const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, staffId: u.staff_id || undefined, active: !!u.active };
+const parseModules = (v) => { try { const m = JSON.parse(v || '[]'); return Array.isArray(m) ? m : []; } catch { return []; } };
+const publicUser = (u) => u && { id: u.id, name: u.name, username: u.username, role: u.role, staffId: u.staff_id || undefined, active: !!u.active, ...(u.role === 'viewer' ? { modules: parseModules(u.modules) } : {}) };
+const cleanModules = (m) => (Array.isArray(m) ? [...new Set(m.filter((x) => x === '*' || VIEWER_MODULES.includes(x)))] : []);
+const ROLES = ['admin', 'manager', 'staff', 'viewer'];
 
 async function auth(req, res, next) {
   const id = readToken(SECRET, getCookie(req));
   const user = id && (await db.get('SELECT * FROM users WHERE id = ?', [id]));
   if (!user || !user.active) return res.status(401).json({ error: 'Please log in' });
-  req.user = user; next();
+  req.user = { ...user, modules: parseModules(user.modules) }; next();
 }
 const adminOnly = (req, res, next) => (req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Only the owner can do this' }));
 const wrap = (fn) => (req, res, next) => fn(req, res, next).catch(next);
@@ -137,7 +140,7 @@ async function readSettings() {
 app.get('/api/db', auth, wrap(async (req, res) => {
   const now = tick();
   const rows = await db.all('SELECT col, data FROM records WHERE deleted = 0');
-  const out = Object.fromEntries(COLLECTIONS.filter((c) => canRead(req.user.role, c)).map((c) => [c, []]));
+  const out = Object.fromEntries(COLLECTIONS.filter((c) => canRead(req.user, c)).map((c) => [c, []]));
   for (const r of rows) if (out[r.col]) { const v = redact(req.user.role, r.col, JSON.parse(r.data), req.user.staff_id); if (v) out[r.col].push(v); }
   for (const c of Object.keys(out)) out[c].sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
   const s = await readSettings();
@@ -148,7 +151,7 @@ app.get('/api/changes', auth, wrap(async (req, res) => {
   const since = Number(req.query.since) || 0;
   const now = tick();
   const rows = await db.all('SELECT col, id, data, deleted FROM records WHERE updated_at > ? AND updated_at <= ?', [since, now]);
-  const changes = rows.filter((r) => canRead(req.user.role, r.col)).map((r) => ({ col: r.col, id: r.id, deleted: !!Number(r.deleted), data: Number(r.deleted) ? undefined : redact(req.user.role, r.col, JSON.parse(r.data), req.user.staff_id) }))
+  const changes = rows.filter((r) => canRead(req.user, r.col)).map((r) => ({ col: r.col, id: r.id, deleted: !!Number(r.deleted), data: Number(r.deleted) ? undefined : redact(req.user.role, r.col, JSON.parse(r.data), req.user.staff_id) }))
     .filter((c) => c.deleted || c.data);
   const s = await readSettings();
   res.json({ changes, settings: s && s.updated_at > since ? s.value : undefined, serverTime: now });
@@ -201,26 +204,30 @@ app.get('/api/users', auth, adminOnly, wrap(async (_req, res) => {
   res.json({ users: (await db.all('SELECT * FROM users ORDER BY created_at')).map(publicUser) });
 }));
 app.post('/api/users', auth, adminOnly, wrap(async (req, res) => {
-  const { name, username, password, role, staffId } = req.body || {};
+  const { name, username, password, role, staffId, modules } = req.body || {};
   if (!name || !username || !password || String(password).length < 6) return res.status(400).json({ error: 'Name, username and a password of at least 6 characters are required' });
-  if (!['admin', 'manager', 'staff'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (!ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (role === 'viewer' && !cleanModules(modules).length) return res.status(400).json({ error: 'Choose what this viewer may see' });
   const uname = String(username).toLowerCase().trim();
   if (await db.get('SELECT id FROM users WHERE username = ?', [uname])) return res.status(409).json({ error: 'Username already taken' });
   const id = uid();
-  await db.run('INSERT INTO users (id, name, username, hash, role, staff_id, active, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)', [id, name, uname, hashPassword(password), role, staffId || null, Date.now()]);
+  await db.run('INSERT INTO users (id, name, username, hash, role, staff_id, active, created_at, modules) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)', [id, name, uname, hashPassword(password), role, staffId || null, Date.now(), role === 'viewer' ? JSON.stringify(cleanModules(modules)) : null]);
   res.json({ user: publicUser(await db.get('SELECT * FROM users WHERE id = ?', [id])) });
   void audit(req.user, 'users', id, 'create', `${uname} (${role})`);
 }));
 app.put('/api/users/:id', auth, adminOnly, wrap(async (req, res) => {
   const u = await db.get('SELECT * FROM users WHERE id = ?', [req.params.id]);
   if (!u) return res.status(404).json({ error: 'Not found' });
-  const { name, role, staffId, active, password } = req.body || {};
+  const { name, role, staffId, active, password, modules } = req.body || {};
   if (u.id === req.user.id && (role && role !== 'admin' || active === false)) return res.status(400).json({ error: 'You cannot remove your own owner access' });
-  if (role && !['admin', 'manager', 'staff'].includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  if (role && !ROLES.includes(role)) return res.status(400).json({ error: 'Invalid role' });
+  const newRole = role ?? u.role;
+  if (newRole === 'viewer' && !cleanModules(modules ?? parseModules(u.modules)).length) return res.status(400).json({ error: 'Choose what this viewer may see' });
   if (password !== undefined && String(password).length < 6) return res.status(400).json({ error: 'Password must be at least 6 characters' });
   await db.run('UPDATE users SET name = ?, role = ?, staff_id = ?, active = ?, hash = ? WHERE id = ?', [
     name ?? u.name, role ?? u.role, staffId === undefined ? u.staff_id : staffId || null, active === undefined ? u.active : active ? 1 : 0,
     password ? hashPassword(password) : u.hash, u.id]);
+  await db.run('UPDATE users SET modules = ? WHERE id = ?', [newRole === 'viewer' ? JSON.stringify(cleanModules(modules ?? parseModules(u.modules))) : null, u.id]);
   void audit(req.user, 'users', u.id, 'update', `${u.username}${password ? ' · password changed' : ''}${role && role !== u.role ? ' · role ' + role : ''}${active === false ? ' · disabled' : ''}`);
   res.json({ user: publicUser(await db.get('SELECT * FROM users WHERE id = ?', [u.id])) });
 }));
@@ -284,6 +291,7 @@ app.get('/api/calendar/:token.ics', wrap(async (req, res) => {
 
 // ---- photos ----
 app.post('/api/files', auth, wrap(async (req, res) => {
+  if (req.user.role === 'viewer') return res.status(403).json({ error: 'This is a view-only login' });
   try { res.json({ url: await files.save(req.body?.data, req.user.id) }); }
   catch (e) { res.status(e.status || 400).json({ error: e.message }); }
 }));

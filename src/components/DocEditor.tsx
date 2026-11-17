@@ -6,6 +6,14 @@ import { QR, useDocQr } from '../plugins/hooks';
 import { Letterhead, Bi, Signatures } from './DocParts';
 
 type Doc = Partial<Quotation> | Partial<Invoice>;
+const KINDS: { id: NonNullable<LineItem['kind']>; label: string }[] = [{ id: 'item', label: 'Item / work' }, { id: 'material', label: 'Material' }, { id: 'labour', label: 'Labour' }, { id: 'additional', label: 'Additional charge' }];
+const KIND_LABEL: Record<string, string> = { item: 'Items', material: 'Material charges', labour: 'Labour charges', additional: 'Additional charges' };
+/** Subtotal per kind of line (items, materials, labour, additional charges). */
+function byKind(items: LineItem[]) {
+  const out: Record<string, number> = {};
+  for (const l of items) out[l.kind || 'item'] = (out[l.kind || 'item'] || 0) + lineTotal(l);
+  return out;
+}
 
 export function LinesEditor({ doc, set, s }: { doc: Doc; set: (p: Doc) => void; s: Settings }) {
   const items = doc.items || [];
@@ -15,10 +23,11 @@ export function LinesEditor({ doc, set, s }: { doc: Doc; set: (p: Doc) => void; 
     <div className="span-3">
       <div className="table-wrap" style={{ margin: 0 }}>
         <table className="lines">
-          <thead><tr><th style={{ minWidth: 220 }}>Description</th><th>Work type</th><th style={{ width: 80 }}>Qty</th><th style={{ width: 80 }}>Unit</th><th style={{ width: 100 }}>Rate</th><th className="num" style={{ width: 110 }}>Amount</th><th /></tr></thead>
+          <thead><tr><th style={{ minWidth: 220 }}>Description</th><th>Type</th><th>Work type</th><th style={{ width: 80 }}>Qty</th><th style={{ width: 80 }}>Unit</th><th style={{ width: 100 }}>Rate</th><th className="num" style={{ width: 110 }}>Amount</th><th /></tr></thead>
           <tbody>{items.map((l, i) => (
             <tr key={l.id}>
               <td><input value={l.description} onChange={(e) => upd(i, { description: e.target.value })} placeholder="Item / work description" /></td>
+              <td><select value={l.kind || 'item'} onChange={(e) => upd(i, { kind: e.target.value as LineItem['kind'] })}>{KINDS.map((k) => <option key={k.id} value={k.id}>{k.label}</option>)}</select></td>
               <td><select value={l.workTypeId || ''} onChange={(e) => { const w = s.workTypes.find((x) => x.id === e.target.value); upd(i, { workTypeId: e.target.value, unit: w?.unit || l.unit, rate: l.rate || w?.rate || 0 }); }}>
                 <option value="">—</option>{s.workTypes.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}</select></td>
               <td><input type="number" value={l.qty} onChange={(e) => upd(i, { qty: +e.target.value })} /></td>
@@ -29,8 +38,14 @@ export function LinesEditor({ doc, set, s }: { doc: Doc; set: (p: Doc) => void; 
             </tr>))}</tbody>
         </table>
       </div>
-      <button className="btn sm" style={{ marginTop: 8 }} onClick={() => set({ items: [...items, { id: uid(), description: '', qty: 1, unit: 'pcs', rate: 0 }] })}><Plus size={14} />Add line</button>
+      <div className="flex wrap" style={{ marginTop: 8 }}>
+        <button className="btn sm" onClick={() => set({ items: [...items, { id: uid(), description: '', qty: 1, unit: 'pcs', rate: 0, kind: 'item' }] })}><Plus size={14} />Add line</button>
+        <button className="btn sm ghost" onClick={() => set({ items: [...items, { id: uid(), description: 'Materials', qty: 1, unit: 'lot', rate: 0, kind: 'material' }] })}><Plus size={14} />Material charges</button>
+        <button className="btn sm ghost" onClick={() => set({ items: [...items, { id: uid(), description: 'Labour', qty: 1, unit: 'lot', rate: 0, kind: 'labour' }] })}><Plus size={14} />Labour charges</button>
+        <button className="btn sm ghost" onClick={() => set({ items: [...items, { id: uid(), description: 'Additional charges', qty: 1, unit: 'lot', rate: 0, kind: 'additional' }] })}><Plus size={14} />Additional charges</button>
+      </div>
       <div className="totals">
+        {Object.keys(byKind(items)).length > 1 && Object.entries(byKind(items)).map(([k, v]) => <div key={k} className="muted"><span>{KIND_LABEL[k]}</span><span>{money(v, s)}</span></div>)}
         <div><span>Subtotal</span><span>{money(tot.subtotal, s)}</span></div>
         <div><span>Discount</span><input type="number" style={{ width: 110, textAlign: 'right' }} value={doc.discount || 0} onChange={(e) => set({ discount: +e.target.value })} /></div>
         <div><span>VAT %</span><input type="number" style={{ width: 110, textAlign: 'right' }} value={doc.vat ?? s.vatRate} onChange={(e) => set({ vat: +e.target.value })} /></div>
@@ -52,6 +67,7 @@ export function DocView({ kind, doc, s, customer, extra }: { kind: 'QUOTATION' |
       <table style={{ width: '100%' }}><thead><tr><th>#</th><th><Bi en="Description" /></th><th className="num"><Bi en="Qty" /></th><th><Bi en="Unit" /></th><th className="num"><Bi en="Rate" /></th><th className="num"><Bi en="Amount" /></th></tr></thead>
         <tbody>{doc.items.map((l, i) => <tr key={l.id}><td>{i + 1}</td><td>{l.description}</td><td className="num">{l.qty}</td><td>{l.unit}</td><td className="num">{money(l.rate, s)}</td><td className="num">{money(lineTotal(l), s)}</td></tr>)}</tbody></table>
       <div className="totals" style={{ marginTop: 14 }}>
+        {Object.keys(byKind(doc.items)).length > 1 && Object.entries(byKind(doc.items)).map(([k, v]) => <div key={k}><span><Bi en={KIND_LABEL[k]} inline /></span><span>{money(v, s)}</span></div>)}
         <div><span><Bi en="Subtotal" inline /></span><span>{money(tot.subtotal, s)}</span></div>
         {tot.discount > 0 && <div><span><Bi en="Discount" inline /></span><span>−{money(tot.discount, s)}</span></div>}
         <div><span><Bi en="VAT" inline /> {doc.vat}%</span><span>{money(tot.vat, s)}</span></div>

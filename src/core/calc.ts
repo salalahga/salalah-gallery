@@ -149,7 +149,12 @@ export function amountInWords(amount: number, currency: string) {
 }
 
 /** Project (job) accounts: contract value incl. additional work, money collected, expenses and profit. */
-export function projectFinance(db: DB, job: Pick<Job, 'id' | 'value' | 'extras' | 'materials'>) {
+/**
+ * Project accounts. Revenue = contract + approved additional work − credit notes (collections are
+ * not revenue, so an advance is never counted twice). Direct cost = expenses posted to the project
+ * + stock issued + staff hours. Net profit also takes the overhead share (Settings → overhead %).
+ */
+export function projectFinance(db: DB, job: Pick<Job, 'id' | 'value' | 'extras' | 'materials'> & { budget?: number }) {
   const tasks = db.tasks.filter((t) => t.jobId === job.id && Number(t.spent) > 0);
   const labourHours = tasks.reduce((n, t) => n + Number(t.spent), 0);
   const labour = tasks.reduce((n, t) => n + Number(t.spent) * hourlyCost(db.staff.find((x) => x.id === t.staffId), db.settings), 0);
@@ -170,9 +175,28 @@ export function projectFinance(db: DB, job: Pick<Job, 'id' | 'value' | 'extras' 
   txns.filter((t) => t.kind === 'expense' && !isRefund(t)).forEach((t) => (byCategory[t.category] = (byCategory[t.category] || 0) + t.amount));
   if (materials) byCategory['Materials from stock'] = (byCategory['Materials from stock'] || 0) + materials;
   if (labour) byCategory['Staff time (from tasks)'] = (byCategory['Staff time (from tasks)'] || 0) + labour;
+  const overheadRate = Number(db.settings.overheadRate) || 0;
+  const overhead = contract * overheadRate / 100;
+  const gross = contract - expenses; const net = gross - overhead;
+  const budget = Number(job.budget) || 0;
   return {
     base, extras, credited, contract, collected, toCollect: Math.max(0, contract - collected), spent, materials, labour, labourHours, expenses, invoiced,
     // labour is the cost of salaried time already paid through payroll, so it lowers profit but not cash
-    profit: contract - expenses, cash: collected - spent - materials, margin: contract ? (contract - expenses) / contract : 0, byCategory,
+    direct: expenses, overhead, overheadRate, gross, net, profit: net, cash: collected - spent - materials,
+    grossMargin: contract ? gross / contract : 0, margin: contract ? net / contract : 0, byCategory,
+    budget, estimatedProfit: budget ? contract - budget - overhead : undefined, budgetLeft: budget ? budget - expenses : undefined,
+    overBudget: budget > 0 && expenses > budget + 0.0005, loss: contract > 0 && net < -0.0005,
   };
 }
+
+/** Overheads (expenses not tied to a project, salaries excluded) as % of income over the last 12 months — a suggestion for Settings. */
+export function suggestedOverheadRate(db: DB) {
+  const from = new Date(); from.setFullYear(from.getFullYear() - 1); const f = from.toISOString().slice(0, 10);
+  const inc = db.txns.filter((t) => t.kind === 'income' && t.date >= f).reduce((n, t) => n + t.amount, 0);
+  const ovh = db.txns.filter((t) => t.kind === 'expense' && !t.jobId && t.date >= f && !['Salary', 'Refund', 'Sales Return'].includes(t.category)).reduce((n, t) => n + t.amount, 0);
+  return inc ? Math.round((ovh / inc) * 1000) / 10 : 0;
+}
+/** The first of these expense categories that exists in Settings (so new and older category names both work). */
+export const catOf = (s: Settings, ...names: string[]) => names.find((n) => s.expenseCategories.includes(n)) || names[0];
+/** Project expense categories from the ERP spec; added once to older setups. */
+export const PROJECT_CATS = ['Wood and Plywood', 'Hardware and Accessories', 'Labour', 'Carpenter Wages', 'Polishing', 'Painting', 'Transportation', 'Installation', 'Electricity', 'Outsourced Work', 'Other Expenses'];

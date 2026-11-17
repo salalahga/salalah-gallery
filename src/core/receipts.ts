@@ -1,4 +1,5 @@
 import { store, nextNumber, today } from './store';
+import { autoStep } from './workflow';
 import type { Receipt } from './types';
 
 /**
@@ -19,6 +20,10 @@ export function issueReceipt(r: Omit<Receipt, 'id' | 'createdAt' | 'number'> & {
     description: `${r.kind === 'advance' ? 'Advance' : 'Payment'} ${inv ? inv.number + ' ' : ''}— ${customer?.name || 'Customer'}`, ref: rec.number,
     jobId: r.jobId || inv?.jobId || db.quotations.find((q) => q.id === r.quotationId)?.jobId,
   });
+  // an advance moves its project to "Advance received"
+  const jobId = r.jobId || inv?.jobId || db.quotations.find((q) => q.id === r.quotationId)?.jobId;
+  const job = jobId && store.get().jobs.find((j) => j.id === jobId);
+  if (job && r.kind === 'advance') { const n = autoStep(job, 6, rec.date, `Advance ${rec.number}`); if (n) store.upsert('jobs', n); }
   // a cheque is tracked until it clears (post-dated cheques included)
   if (r.method === 'Cheque') {
     store.upsert('cheques', { direction: 'received', chequeNo: r.chequeNo || '—', date: r.chequeDate || rec.date, amount: Number(r.amount), party: customer?.name || 'Customer', status: 'pending', receiptId: rec.id, note: `Receipt ${rec.number}` });

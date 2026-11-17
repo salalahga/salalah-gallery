@@ -3,6 +3,7 @@ import { Plus, Trash2, Download, Upload, RotateCcw } from 'lucide-react';
 import { store, useDB, exportBackup, uid } from '../core/store';
 import type { WorkType, DB } from '../core/types';
 import { PageHeader, Field, Tabs, toast } from '../components/ui';
+import { suggestedOverheadRate } from '../core/calc';
 import { useT } from '../core/i18n';
 import Users from './Users';
 import { AutoBackup, ActivityLog } from './SettingsExtra';
@@ -84,6 +85,7 @@ export default function SettingsPage() {
           <Field label="Working days / month"><input type="number" value={s.workingDaysPerMonth} onChange={(e) => set({ workingDaysPerMonth: +e.target.value })} /></Field>
           <Field label="Work hours / day"><input type="number" value={s.workHoursPerDay} onChange={(e) => set({ workHoursPerDay: +e.target.value })} /></Field>
           <Field label="Overtime multiplier"><input type="number" step={0.05} value={s.overtimeMultiplier} onChange={(e) => set({ overtimeMultiplier: +e.target.value })} /></Field>
+          <Field label={`Overheads charged to projects (% of value) — last 12 months: ${suggestedOverheadRate(db)}%`}><input type="number" step={0.5} min={0} value={s.overheadRate ?? 0} onChange={(e) => set({ overheadRate: +e.target.value })} /></Field>
           <Field label="Gratuity — days of basic wage per year"><input type="number" value={s.gratuityDaysPerYear ?? 30} onChange={(e) => set({ gratuityDaysPerYear: +e.target.value })} /></Field>
           <Field label="Paid annual leave — days per year"><input type="number" value={s.annualLeaveDays ?? 30} onChange={(e) => set({ annualLeaveDays: +e.target.value })} /></Field>
           <div />

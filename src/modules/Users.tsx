@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Plus, Trash2, ShieldCheck, UserCog, HardHat } from 'lucide-react';
+import { Plus, Trash2, ShieldCheck, UserCog, HardHat, Eye } from 'lucide-react';
+import { modules as ALL_MODULES, SYSTEM_MODULES } from './registry';
 import { api } from '../core/api';
 import { store, useDB } from '../core/store';
 import { useUser, type Role, type User } from '../core/session';
@@ -9,7 +10,10 @@ const ROLES: { id: Role; label: string; icon: typeof ShieldCheck; desc: string }
   { id: 'admin', label: 'Owner', icon: ShieldCheck, desc: 'Everything, including payroll, settings, website and user logins.' },
   { id: 'manager', label: 'Manager', icon: UserCog, desc: 'Jobs, tasks, customers, quotations, invoices, sales, accounts, stock, staff & attendance. No payroll or settings.' },
   { id: 'staff', label: 'Staff', icon: HardHat, desc: 'Sees jobs and their own tasks; can update task status. No prices, salaries or customer contacts.' },
+  { id: 'viewer', label: 'View only', icon: Eye, desc: 'Read-only. “Everything” = owner viewer (dashboards, projects, accounts, reports). Or tick only the pages they may see. Cannot add, change or delete anything.' },
 ];
+// read lazily: registry imports this file through Settings
+const viewModules = () => ALL_MODULES.filter((m) => !SYSTEM_MODULES.includes(m.id));
 
 type Edit = Partial<User> & { password?: string };
 
@@ -28,7 +32,8 @@ export default function Users() {
   const save = async () => {
     if (!edit) return;
     try {
-      if (edit.id) await api(`/api/users/${edit.id}`, { method: 'PUT', body: { name: edit.name, role: edit.role, staffId: edit.staffId || null, active: edit.active, password: edit.password || undefined } });
+      if (edit.role === 'viewer' && !edit.modules?.length) return toast('Choose what this viewer may see');
+      if (edit.id) await api(`/api/users/${edit.id}`, { method: 'PUT', body: { name: edit.name, role: edit.role, staffId: edit.staffId || null, active: edit.active, password: edit.password || undefined, modules: edit.role === 'viewer' ? edit.modules : undefined } });
       else await api('/api/users', { method: 'POST', body: edit });
       toast('User saved'); setEdit(null); void load();
     } catch (e) { toast((e as Error).message); }
@@ -48,7 +53,7 @@ export default function Users() {
           <thead><tr><th>Name</th><th>Username</th><th>Role</th><th>Staff profile</th><th>Status</th><th /></tr></thead>
           <tbody>{users.map((u) => <tr key={u.id} className="click" onClick={() => setEdit({ ...u })}>
             <td><div className="flex"><Avatar name={u.name} size={30} /><b>{u.name}</b>{u.id === me?.id && <Badge>you</Badge>}</div></td>
-            <td>{u.username}</td><td><Badge tone={u.role === 'admin' ? 'amber' : u.role === 'manager' ? 'blue' : 'gray'}>{ROLES.find((r) => r.id === u.role)?.label}</Badge></td>
+            <td>{u.username}</td><td><Badge tone={u.role === 'admin' ? 'amber' : u.role === 'manager' ? 'blue' : u.role === 'viewer' ? 'green' : 'gray'}>{ROLES.find((r) => r.id === u.role)?.label}</Badge>{u.role === 'viewer' && <div className="muted" style={{ fontSize: 12 }}>{u.modules?.includes('*') ? 'Everything' : `${u.modules?.length || 0} pages`}</div>}</td>
             <td>{staffName(u.staffId) || <span className="muted">—</span>}</td>
             <td>{u.active ? <Badge tone="green">Active</Badge> : <Badge tone="red">Disabled</Badge>}</td>
             <td onClick={(e) => e.stopPropagation()}>{u.id !== me?.id && <button className="icon-btn" onClick={() => remove(u)}><Trash2 size={15} /></button>}</td>
@@ -59,12 +64,18 @@ export default function Users() {
           <Field label="Name"><input autoFocus value={edit.name || ''} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
           <Field label="Username"><input disabled={!!edit.id} autoCapitalize="none" value={edit.username || ''} onChange={(e) => setEdit({ ...edit, username: e.target.value })} /></Field>
           <Field label={edit.id ? 'New password (leave empty to keep)' : 'Password (min 6)'}><input type="password" autoComplete="new-password" value={edit.password || ''} onChange={(e) => setEdit({ ...edit, password: e.target.value })} /></Field>
-          <Field label="Role"><select disabled={edit.id === me?.id} value={edit.role} onChange={(e) => setEdit({ ...edit, role: e.target.value as Role })}>{ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></Field>
+          <Field label="Role"><select disabled={edit.id === me?.id} value={edit.role} onChange={(e) => { const role = e.target.value as Role; setEdit({ ...edit, role, modules: role === 'viewer' ? edit.modules?.length ? edit.modules : ['*'] : undefined }); }}>{ROLES.map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}</select></Field>
           <Field label="Linked staff profile"><select value={edit.staffId || ''} onChange={(e) => {
             const st = db.staff.find((x) => x.id === e.target.value);
             setEdit({ ...edit, staffId: e.target.value, name: edit.name || st?.name, username: edit.username || st?.name.split(' ')[0].toLowerCase() });
           }}><option value="">— none —</option>{db.staff.map((x) => <option key={x.id} value={x.id}>{x.name} · {x.role}</option>)}</select></Field>
           {edit.id && <Field label="Status"><select disabled={edit.id === me?.id} value={edit.active ? '1' : '0'} onChange={(e) => setEdit({ ...edit, active: e.target.value === '1' })}><option value="1">Active</option><option value="0">Disabled</option></select></Field>}
+          {edit.role === 'viewer' && <div className="span-3">
+            <div className="chips">
+              <button type="button" className={`chip ${edit.modules?.includes('*') ? 'on' : ''}`} onClick={() => setEdit({ ...edit, modules: ['*'] })}>Everything (owner viewer)</button>
+              {viewModules().map((m) => { const on = !edit.modules?.includes('*') && !!edit.modules?.includes(m.id); return <button type="button" key={m.id} className={`chip ${on ? 'on' : ''}`} onClick={() => { const cur = (edit.modules || []).filter((x) => x !== '*'); setEdit({ ...edit, modules: on ? cur.filter((x) => x !== m.id) : [...cur, m.id] }); }}>{m.label}</button>; })}
+            </div>
+          </div>}
           <p className="span-3 muted">{ROLES.find((r) => r.id === edit.role)?.desc}{edit.role === 'staff' && ' Link a staff profile so they see the tasks assigned to them.'}</p>
         </div>
       </Modal>}

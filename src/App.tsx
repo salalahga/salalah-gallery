@@ -2,12 +2,13 @@ import { useEffect, useState } from 'react';
 import { Menu, Moon, Sun, Plus, Search, LogOut, KeyRound, Cloud, CloudOff, RefreshCw } from 'lucide-react';
 import { modulesFor } from './modules/registry';
 import { useRoute, go } from './core/router';
-import { store, useSettings, useSync } from './core/store';
+import { store, useSettings, useSync, useDB } from './core/store';
 import { useT } from './core/i18n';
 import { session, useSession, useRole, useUser } from './core/session';
 import { api } from './core/api';
 import { Toaster, Modal, Field, Avatar, toast } from './components/ui';
 import { Login, Setup, Splash } from './modules/Auth';
+import { PROJECT_CATS } from './core/calc';
 
 export default function App() {
   const st = useSession();
@@ -18,7 +19,7 @@ export default function App() {
   return <Workspace />;
 }
 
-const ROLE_LABEL = { admin: 'Owner', manager: 'Manager', staff: 'Staff' } as const;
+const ROLE_LABEL = { admin: 'Owner', manager: 'Manager', staff: 'Staff', viewer: 'View only' } as const;
 
 function SyncBadge() {
   const sy = useSync();
@@ -57,7 +58,20 @@ function Workspace() {
   const s = useSettings();
   const t = useT();
   const role = useRole();
-  const modules = modulesFor(role);
+  const user = useUser();
+  const modules = modulesFor(role, user?.modules);
+  useEffect(() => { document.body.classList.toggle('viewer', role === 'viewer'); }, [role]);
+  // customers added before Customer IDs existed get one (oldest first), owner only
+  const custs = useDB().customers;
+  useEffect(() => {
+    if (role !== 'admin' || !custs.some((c) => !c.code)) return;
+    let n = custs.reduce((m, c) => Math.max(m, parseInt(String(c.code || '').replace(/\D/g, ''), 10) || 0), 0);
+    for (const c of [...custs].filter((x) => !x.code).sort((x, y) => String(x.createdAt).localeCompare(String(y.createdAt)))) store.upsert('customers', { ...c, code: `C-${String(++n).padStart(4, '0')}` });
+  }, [role, custs]);
+  // older setups: add the project expense categories once (owner only; existing names are kept)
+  useEffect(() => {
+    if (role === 'admin' && !s.catsV2 && !PROJECT_CATS.every((c) => s.expenseCategories.includes(c))) store.setSettings({ expenseCategories: [...new Set([...s.expenseCategories, ...PROJECT_CATS])], catsV2: true });
+  }, [role, s.catsV2, s.expenseCategories]);
   const [open, setOpen] = useState(false);
   const [dark, setDark] = useState(() => { try { return localStorage.getItem('ww-theme') === 'dark'; } catch { return false; } });
   const [palette, setPalette] = useState(false);
@@ -72,10 +86,11 @@ function Workspace() {
     window.addEventListener('keydown', h); return () => window.removeEventListener('keydown', h);
   }, []);
 
+  if (!modules.length) return <div className="pp-center"><div className="pp-card"><h2>Nothing to show yet</h2><p>The owner has not given this login any pages to view.</p><button className="btn" onClick={() => session.logout()}>Log out</button></div></div>;
   const mod = modules.find((m) => m.id === page) || modules[0];
   const Page = mod.component;
   const groups = [...new Set(modules.map((m) => m.group))];
-  const office = role !== 'staff';
+  const office = role === 'admin' || role === 'manager';
   const quick = office ? [
     { label: 'New project', go: () => go('jobs', { new: '1' }) },
     { label: t('New quotation'), go: () => go('quotations', { new: '1' }) },
