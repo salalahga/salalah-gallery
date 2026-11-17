@@ -34,7 +34,12 @@ export async function openDb({ dataDir, url = process.env.DATABASE_URL } = {}) {
     const { default: pg } = await import('pg');
     pg.types.setTypeParser(20, toNum);
     pg.types.setTypeParser(1700, toNum);
-    const pool = new pg.Pool({ ...sslFor(url), max: Number(process.env.PG_POOL || 10) });
+    // DB_SCHEMA keeps this app's tables in their own PostgreSQL schema, so it can share a database
+    // server with another app without any table names clashing. Every connection gets the search_path.
+    const schema = process.env.DB_SCHEMA;
+    if (schema && !/^[a-z_][a-z0-9_]{0,40}$/.test(schema)) throw new Error('DB_SCHEMA must be a simple lowercase name');
+    const pool = new pg.Pool({ ...sslFor(url), max: Number(process.env.PG_POOL || 10), ...(schema ? { options: `-c search_path=${schema}` } : {}) });
+    if (schema) await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
     const q = wrap(async (sql, p) => (await pool.query(sql, p)).rows);
     db = {
       kind: 'postgres', query: q, one: q.one,

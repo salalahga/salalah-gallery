@@ -150,6 +150,8 @@ Development: run `npm run dev:server` and `npm run dev` (Vite proxies `/api`).
 | `NODE_ENV=production` | Secure cookies; hides internal error details |
 | `SETUP_CODE` | Stops a stranger from claiming the owner account on a fresh public server |
 | `PORT` | Default 8790 |
+| `DB_SCHEMA` | Optional: keep this app's tables in their own PostgreSQL schema (e.g. `perfume`) to share a database with another app |
+| `DATABASE_SSL` | `require` for managed databases with a self-signed certificate (encrypted, certificate not verified) |
 
 Serve over HTTPS behind a reverse proxy. Without `DATABASE_URL` the app uses embedded PGlite in `./data` (development only; refused in production).
 
