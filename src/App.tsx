@@ -42,8 +42,8 @@ function UserMenu() {
       <button className="user-chip"><Avatar name={user.name} size={30} /><span className="hide-sm"><b>{user.name}</b><small>{ROLE_LABEL[user.role]}</small></span></button>
       <div className="quick-menu">
         <button onClick={() => setPw({ current: '', next: '' })}><KeyRound size={14} /> Change password</button>
-        {store.mode === 'server' && <button onClick={async () => { if (!window.confirm('Sign out this account on every other phone and computer?')) return; try { await api('/api/logout-all', { method: 'POST' }); toast('Signed out on all other devices'); } catch (e) { toast((e as Error).message); } }}><LogOut size={14} /> Log out other devices</button>}
         <button onClick={() => session.logout()}><LogOut size={14} /> Log out</button>
+        {store.mode === 'server' && <button onClick={async () => { if (!window.confirm('Sign out this account on every other phone and computer?')) return; try { await api('/api/logout-all', { method: 'POST' }); toast('Signed out on all other devices'); } catch (e) { toast((e as Error).message); } }}><LogOut size={14} /> Sign out other devices</button>}
       </div>
       {pw && <Modal open title="Change password" onClose={() => setPw(null)} footer={<><button className="btn" onClick={() => setPw(null)}>Cancel</button><button className="btn primary" onClick={change}>Save</button></>}>
         <div className="form two">
