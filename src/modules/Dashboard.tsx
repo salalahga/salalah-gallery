@@ -4,6 +4,8 @@ import { useT } from '../core/i18n';
 import { docTotals, finance, invoiceBalance, lastMonths, money, monthLabel, balances, fmtDate } from '../core/calc';
 import { daysFrom } from '../core/helpers';
 import { Landmark, Wrench } from 'lucide-react';
+import { projectTrack } from '../core/stages';
+import { StageDots } from '../components/ProjectStages';
 import { statusMeta, lookup, dueLabel, priorityTone, expiringDocs, expiryLabel } from '../core/helpers';
 import { IdCard } from 'lucide-react';
 import { go } from '../core/router';
@@ -69,7 +71,7 @@ export default function Dashboard() {
             {active.slice(0, 6).map((j) => { const wt = L.workType(j.workTypeId); const due = dueLabel(j.dueDate); return (
               <li key={j.id} style={{ cursor: 'pointer' }} onClick={() => go('jobs', { id: j.id })}>
                 <span className="dot" style={{ background: wt?.color }} />
-                <div className="grow"><div className="title">{j.title}</div><div className="muted">{j.code} · {L.customer(j.customerId)?.name || '—'}</div><Progress value={j.progress} color={wt?.color} /></div>
+                <div className="grow"><div className="title"><span className="code-tag">{j.code}</span> {j.title}</div><div className="muted">{L.customer(j.customerId)?.name || '—'} · {projectTrack(db, j).next}</div><div className="flex" style={{ gap: 8 }}><StageDots t={projectTrack(db, j)} /><div style={{ flex: 1 }}><Progress value={j.progress} color={wt?.color} /></div></div></div>
                 <div className="right"><Badge tone={statusMeta[j.status].tone}>{statusMeta[j.status].label}</Badge><div className="muted" style={{ marginTop: 4 }}>{due.text}</div></div>
               </li>); })}
             {!active.length && <Empty title="No active jobs" />}
@@ -89,6 +91,15 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {(() => {
+        const rows = db.jobs.filter((j) => j.status !== 'cancelled').map((j) => ({ j, t: projectTrack(db, j) })).filter((r) => r.t.balance > 0.0005 && ['installation', 'completed'].includes(r.j.status)).sort((a, b) => b.t.balance - a.t.balance);
+        return rows.length > 0 && <div className="card mb">
+          <h3><span className="flex"><Wallet size={16} color="#c2410c" />Balance to collect — finished & installed projects</span><b className="neg">{money(rows.reduce((n, r) => n + r.t.balance, 0), s)}</b></h3>
+          <ul className="list">{rows.slice(0, 6).map(({ j, t }) => <li key={j.id} style={{ cursor: 'pointer' }} onClick={() => go('jobs', { id: j.id })}>
+            <span className="code-tag">{j.code}</span><div className="grow"><div className="title">{j.title}</div><div className="muted">{L.customer(j.customerId)?.name || '—'} · {j.status === 'completed' ? `installed ${fmtDate(j.completedDate)}` : 'installing'}</div></div>
+            <b className="neg">{money(t.balance, s)}</b></li>)}</ul>
+        </div>;
+      })()}
       <div className="grid g2 mb">
         <div className="card">
           <h3><span className="flex"><Landmark size={16} />Cash & bank</span><a className="link" href="#/accounts">Accounts</a></h3>

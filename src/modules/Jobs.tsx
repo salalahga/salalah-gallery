@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Plus, LayoutGrid, List, Trash2, Receipt, MessageCircle, PackageMinus } from 'lucide-react';
+import { Plus, LayoutGrid, List, Trash2, Receipt, MessageCircle, PackageMinus, ListChecks, ArrowRight } from 'lucide-react';
+import { projectTrack, withStatus, nextProjectCode, STAGES, type StageId } from '../core/stages';
+import { StageDots, StageTimeline } from '../components/ProjectStages';
 import { store, useDB, nextInvoiceNumber, today, uid, takeAdvances } from '../core/store';
 import { useRole } from '../core/session';
 import { Photos } from '../components/Photos';
@@ -18,6 +20,8 @@ import { usePlugin, useWaText, gcalLink, mapsLink, QR } from '../plugins/hooks';
 import { CalendarPlus, MapPin, Star, Printer, Truck, HandCoins, Wrench, Palette } from 'lucide-react';
 
 const STATUSES: JobStatus[] = ['enquiry', 'design', 'production', 'finishing', 'installation', 'completed'];
+const WORK_DONE: JobStatus[] = ['installation', 'completed'];
+const WORK_STARTED: JobStatus[] = ['production', 'finishing', 'installation', 'completed'];
 
 /** Last day of a completed project's warranty (undefined when there is none). */
 export function warrantyEnd(j: Pick<Job, 'completedDate' | 'warrantyMonths'>) {
@@ -34,14 +38,14 @@ export function blankJob(code: string, workTypeId?: string): Partial<Job> {
 export default function Jobs() {
   const db = useDB(); const s = db.settings; const L = lookup(db); const can = useCanWrite()('jobs');
   const { params } = useRoute();
-  const [view, setView] = useState<'board' | 'list' | 'accounts'>('board');
+  const [view, setView] = useState<'tracker' | 'board' | 'list' | 'accounts'>(can ? 'tracker' : 'board');
   const [type, setType] = useState('all');
   const [q, setQ] = useState('');
   const [edit, setEdit] = useState<Partial<Job> | null>(null);
   const [drag, setDrag] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
 
-  const newCode = () => { const nums = db.jobs.map((j) => parseInt(j.code.replace(/\D/g, ''), 10) || 0); return `JOB-${(nums.length ? Math.max(...nums) : 100) + 1}`; };
+  const newCode = () => nextProjectCode(db, s);
   useEffect(() => {
     if (params.new) { setEdit(blankJob(newCode(), params.type)); go('jobs'); }
     if (params.id) { const j = db.jobs.find((x) => x.id === params.id); if (j) setEdit(structuredClone(j)); go('jobs'); }
@@ -53,30 +57,30 @@ export default function Jobs() {
   const save = () => {
     if (!edit?.title?.trim()) return toast('Please enter a job title');
     if (db.jobs.some((j) => j.id !== edit.id && j.code === edit.code)) return toast(`Job code ${edit.code} is already used`);
-    const { _tab, ...rec } = edit as Job & { _tab?: string }; void _tab;
-    // the warranty runs from the day the project is completed
-    if (rec.status === 'completed' && !rec.completedDate) rec.completedDate = today();
-    if (rec.status !== 'completed') rec.completedDate = undefined;
+    const { _tab, ...rec0 } = edit as Job & { _tab?: string }; void _tab;
+    // stage dates: the day each status was first reached; the warranty runs from completion
+    const before = db.jobs.find((j) => j.id === rec0.id);
+    const rec = !before || before.status !== rec0.status ? withStatus(rec0, rec0.status, today()) : { ...rec0, completedDate: rec0.status === 'completed' ? rec0.completedDate || today() : undefined };
     store.upsert('jobs', rec as Job); toast('Project saved'); setEdit(null);
   };
   const moveTo = (id: string, status: JobStatus) => {
     const j = db.jobs.find((x) => x.id === id); if (!j || j.status === status) return;
-    store.upsert('jobs', { ...j, status, progress: status === 'completed' ? 100 : j.progress, completedDate: status === 'completed' ? j.completedDate || today() : undefined }); toast(`Moved to ${statusMeta[status].label}`);
+    store.upsert('jobs', withStatus(j, status, today())); toast(`Moved to ${statusMeta[status].label}`);
   };
 
   return (
     <>
       <PageHeader title="Projects" sub="Every work is a project — its value, money collected, expenses and profit, plus CNC, carpentry, board, polish and installation details."
         actions={<>
-          <div className="tabs"><button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}><LayoutGrid size={15} />Board</button><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}><List size={15} />List</button>{can && <button className={view === 'accounts' ? 'on' : ''} onClick={() => setView('accounts')}><Wallet size={15} />Income & expenses</button>}</div>
+          <div className="tabs">{can && <button className={view === 'tracker' ? 'on' : ''} onClick={() => setView('tracker')}><ListChecks size={15} />Tracker</button>}<button className={view === 'board' ? 'on' : ''} onClick={() => setView('board')}><LayoutGrid size={15} />Board</button><button className={view === 'list' ? 'on' : ''} onClick={() => setView('list')}><List size={15} />List</button>{can && <button className={view === 'accounts' ? 'on' : ''} onClick={() => setView('accounts')}><Wallet size={15} />Income & expenses</button>}</div>
           {can && <button className="btn primary" onClick={() => setEdit(blankJob(newCode(), type !== 'all' ? type : undefined))}><Plus size={16} />New project</button>}
         </>} />
       <div className="toolbar">
         <Tabs value={type} onChange={setType} tabs={[{ id: 'all', label: 'All work', count: db.jobs.length }, ...s.workTypes.map((w) => ({ id: w.id, label: w.name, count: db.jobs.filter((j) => j.workTypeId === w.id).length }))]} />
-        <SearchBox value={q} onChange={setQ} placeholder="Search jobs, customers…" />
+        <SearchBox value={q} onChange={setQ} placeholder="Search code, project, customer…" />
       </div>
 
-      {view === 'accounts' ? <ProjectsReport list={list} open={(j) => setEdit({ ...structuredClone(j), _tab: 'money' } as Partial<Job>)} /> : view === 'board' ? (
+      {view === 'tracker' ? <Tracker list={list} open={(j) => setEdit(structuredClone(j))} /> : view === 'accounts' ? <ProjectsReport list={list} open={(j) => setEdit({ ...structuredClone(j), _tab: 'money' } as Partial<Job>)} /> : view === 'board' ? (
         <div className="kanban">
           {STATUSES.map((st) => { const items = list.filter((j) => j.status === st); return (
             <div key={st} className={`kcol ${over === st ? 'over' : ''}`} onDragOver={(e) => { e.preventDefault(); setOver(st); }} onDragLeave={() => setOver(null)} onDrop={() => { if (drag) moveTo(drag, st); setDrag(null); setOver(null); }}>
@@ -84,8 +88,9 @@ export default function Jobs() {
               {items.map((j) => { const wt = L.workType(j.workTypeId); const due = dueLabel(j.dueDate); return (
                 <div key={j.id} className="kcard" draggable={can} onDragStart={() => setDrag(j.id)} onClick={() => setEdit(structuredClone(j))} style={{ borderTop: `3px solid ${wt?.color || 'var(--line)'}` }}>
                   <div className="flex between"><Badge color={wt?.color}>{wt?.name || 'General'}</Badge><Badge tone={priorityTone[j.priority]}>{j.priority}</Badge></div>
-                  <div className="ktitle">{j.title}</div>
-                  <div className="muted">{j.code} · {L.customer(j.customerId)?.name || 'No customer'}</div>
+                  <div className="ktitle"><span className="code-tag">{j.code}</span> {j.title}</div>
+                  <div className="muted">{L.customer(j.customerId)?.name || 'No customer'}</div>
+                  {(() => { const t = projectTrack(db, j, can); return <div className="flex between" style={{ marginTop: 6 }}><StageDots t={t} />{can && t.balance > 0.0005 && WORK_DONE.includes(j.status) && <Badge tone="red">{money(t.balance, s)} due</Badge>}</div>; })()}
                   <div style={{ marginTop: 8 }}><Progress value={j.progress} color={wt?.color} /></div>
                   <div className="kmeta"><div className="avatars">{j.staffIds.map((id) => { const p = L.staff(id); return p && <Avatar key={id} name={p.name} color={p.color} size={24} />; })}</div><Badge tone={due.tone}>{due.text}</Badge></div>
                 </div>); })}
@@ -97,7 +102,7 @@ export default function Jobs() {
             <thead><tr><th>Job</th><th>Type</th><th>Customer</th><th>Status</th><th>Team</th><th>Due</th><th className="num">Value</th></tr></thead>
             <tbody>{list.map((j) => { const wt = L.workType(j.workTypeId); return (
               <tr key={j.id} className="click" onClick={() => setEdit(structuredClone(j))}>
-                <td><b>{j.title}</b><div className="muted">{j.code}</div></td><td><Badge color={wt?.color}>{wt?.name || '—'}</Badge></td>
+                <td><span className="code-tag">{j.code}</span> <b>{j.title}</b></td><td><Badge color={wt?.color}>{wt?.name || '—'}</Badge></td>
                 <td>{L.customer(j.customerId)?.name || '—'}</td><td><Badge tone={statusMeta[j.status].tone}>{statusMeta[j.status].label}</Badge></td>
                 <td><div className="avatars">{j.staffIds.map((id) => { const p = L.staff(id); return p && <Avatar key={id} name={p.name} color={p.color} size={26} />; })}</div></td>
                 <td>{fmtDate(j.dueDate)}</td><td className="num">{j.value === undefined ? '—' : money(j.value, s)}</td>
@@ -168,7 +173,7 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
         {exists && <button className="btn ghost" onClick={() => go('documents', { receipt: 'new', job: job.id! })}><HandCoins size={15} />Advance receipt</button>}
         {exists && <button className="btn ghost" onClick={() => go('documents', { delivery: 'new', job: job.id! })}><Truck size={15} />Delivery note</button>}
         {exists && job.status === 'completed' && <button className="btn ghost" onClick={() => go('services', { new: '1', job: job.id! })}><Wrench size={15} />Service call</button>}
-        {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('jobUpdate', { customer: cust.name, code: job.code, title: job.title, status: statusMeta[job.status!].label, business: s.businessName }))}><MessageCircle size={15} />WhatsApp update</a>}
+        {exists && cust?.phone && <a className="btn ghost" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('jobUpdate', { customer: cust.name, code: job.code, title: job.title, status: `${statusMeta[job.status!].label}${WORK_STARTED.includes(job.status!) && job.status !== 'completed' ? ` (${job.progress || 0}% done)` : ''}`, business: s.businessName }))}><MessageCircle size={15} />WhatsApp update</a>}
         <span className="spacer" /><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" onClick={onSave}>Save project</button>
       </>}>
       {exists && (jobcard || gcal || (maps && site) || (review.enabled && job.status === 'completed')) && <div className="chips" style={{ marginBottom: 14 }}>
@@ -178,6 +183,22 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
         {!readOnly && review.enabled && job.status === 'completed' && cust?.phone && <a className="btn sm" target="_blank" rel="noreferrer" href={waLink(cust.phone, wa('review', { customer: cust.name, title: job.title, business: s.businessName, link: review.link || '' }))}><Star size={14} />Ask for Google review</a>}
       </div>}
       {card && <JobCard job={job} onClose={() => setCard(false)} />}
+      {exists && (() => {
+        const saved = db.jobs.find((x) => x.id === job.id)!; const t = projectTrack(db, saved, !readOnly && role !== 'staff');
+        const mark = (id: 'quote' | 'billing', on: boolean) => { const sd = { ...(saved.stageDone || {}) }; if (on) sd[id] = today(); else delete sd[id]; const n = { ...saved, stageDone: sd }; store.upsert('jobs', n); setJob({ ...job, stageDone: sd }); };
+        const NEXT: Partial<Record<JobStatus, { to: JobStatus; label: string }>> = { enquiry: { to: 'production', label: 'Start work' }, design: { to: 'production', label: 'Start work' }, production: { to: 'installation', label: 'Work finished → Installation' }, finishing: { to: 'installation', label: 'Work finished → Installation' }, installation: { to: 'completed', label: 'Installation done' } };
+        const nx = NEXT[saved.status];
+        const go2 = nx ? () => { const n = withStatus(saved, nx.to, today()); store.upsert('jobs', n); setJob({ ...job, ...n }); toast(`${saved.code}: ${statusMeta[nx.to].label}`); } : undefined;
+        return <div className="card flat stage-card">
+          <div className="flex between wrap" style={{ marginBottom: 10 }}>
+            <span className="flex"><span className="code-tag" style={{ fontSize: 14 }}>{saved.code}</span><Badge tone={t.tone}>{t.next}</Badge>{t.late && <Badge tone="red">Past due date {fmtDate(saved.dueDate)}</Badge>}</span>
+            {!readOnly && go2 && <button type="button" className="btn sm primary" onClick={go2}>{nx!.label}<ArrowRight size={14} /></button>}
+          </div>
+          <StageTimeline t={t} onMark={readOnly ? undefined : mark} />
+          {WORK_STARTED.includes(saved.status) && saved.status !== 'completed' && <div className="flex" style={{ gap: 10 }}><span className="muted">Work done</span><div style={{ flex: 1 }}><Progress value={saved.progress || 0} /></div><b>{saved.progress || 0}%</b></div>}
+          {!readOnly && role !== 'staff' && t.contract > 0 && <div className="flex wrap muted" style={{ gap: 16, marginTop: 8 }}><span>Value <b>{money(t.contract, s)}</b></span><span>Received <b className="pos">{money(t.collected, s)}</b></span><span>Balance <b className={t.balance > 0.0005 ? 'neg' : ''}>{money(t.balance, s)}</b></span></div>}
+        </div>;
+      })()}
       {exists && !readOnly && <div className="toolbar"><div className="tabs">
         <button className={tab === 'details' ? 'on' : ''} onClick={() => setTab('details')}><ClipboardList size={15} />Details</button>
         <button className={tab === 'money' ? 'on' : ''} onClick={() => setTab('money')}><Wallet size={15} />Project accounts</button></div></div>}
@@ -299,6 +320,46 @@ function ProjectsReport({ list, open }: { list: Job[]; open: (j: Job) => void })
         </tr>)}</tbody>
         <tfoot><tr><td colSpan={3}><b>Total</b></td><td className="num"><b>{money(sum('contract'), s)}</b></td><td className="num"><b>{money(sum('collected'), s)}</b></td><td className="num"><b>{money(sum('toCollect'), s)}</b></td><td className="num"><b>{money(sum('expenses'), s)}</b></td><td className="num"><b>{money(sum('profit'), s)}</b></td><td /></tr></tfoot>
       </table></div></div>
+    </>
+  );
+}
+
+/** One row per project: code, stage dots, % done, what is next and the balance still to collect. */
+function Tracker({ list, open }: { list: Job[]; open: (j: Job) => void }) {
+  const db = useDB(); const s = db.settings; const L = lookup(db);
+  const [f, setF] = useState<'active' | StageId | 'balance' | 'closed' | 'all'>('active');
+  const rows = list.map((j) => ({ j, t: projectTrack(db, j) }));
+  const closed = (r: (typeof rows)[number]) => r.j.status === 'cancelled' || !r.t.current;
+  const pass = (r: (typeof rows)[number]) => f === 'all' ? true : f === 'closed' ? closed(r) : f === 'active' ? !closed(r) : f === 'balance' ? r.j.status === 'completed' && r.t.balance > 0.0005 : !closed(r) && r.t.current?.id === f;
+  const shown = rows.filter(pass).sort((a, b) => (b.t.late ? 1 : 0) - (a.t.late ? 1 : 0) || (a.j.dueDate || '9').localeCompare(b.j.dueDate || '9'));
+  const count = (id: StageId) => rows.filter((r) => !closed(r) && r.t.current?.id === id).length;
+  const afterInstall = rows.filter((r) => r.j.status === 'completed' && r.t.balance > 0.0005);
+  const allDue = rows.filter((r) => r.j.status !== 'cancelled').reduce((n, r) => n + r.t.balance, 0);
+  if (!rows.length) return <div className="card"><Empty title="No projects yet" hint="Press New project, or convert an accepted quotation into a project." /></div>;
+  return (
+    <>
+      <div className="grid g4 mb">
+        <div className="stat tone-blue"><div><div className="stat-label">Active projects</div><div className="stat-value">{rows.filter((r) => !closed(r)).length}</div><div className="stat-sub">{rows.filter((r) => r.t.late && !closed(r)).length} past due date</div></div></div>
+        <div className="stat tone-amber"><div><div className="stat-label">In work</div><div className="stat-value">{count('finished')}</div><div className="stat-sub">{count('install')} waiting for installation</div></div></div>
+        <div className="stat tone-red"><div><div className="stat-label">Balance after installation</div><div className="stat-value">{money(afterInstall.reduce((n, r) => n + r.t.balance, 0), s)}</div><div className="stat-sub">{afterInstall.length} installed, not fully paid</div></div></div>
+        <div className="stat tone-wood"><div><div className="stat-label">Total still to collect</div><div className="stat-value">{money(allDue, s)}</div><div className="stat-sub">all open projects</div></div></div>
+      </div>
+      <div className="toolbar chips stage-filter">
+        {([['active', 'Active'], ...STAGES.filter((x) => x.id !== 'paid').map((x) => [x.id, x.id === 'quote' ? 'Waiting quotation' : x.id === 'billing' ? 'Waiting advance' : x.id === 'work' ? 'To start' : x.id === 'finished' ? 'In work' : 'To install']), ['balance', 'Balance pending'], ['closed', 'Closed'], ['all', 'All']] as [typeof f, string][]).map(([id, label]) =>
+          <button key={id} className={`chip ${f === id ? 'on' : ''}`} onClick={() => setF(id)}>{label}<b>{id === 'active' ? rows.filter((r) => !closed(r)).length : id === 'balance' ? afterInstall.length : id === 'closed' ? rows.filter(closed).length : id === 'all' ? rows.length : count(id as StageId)}</b></button>)}
+      </div>
+      <div className="card">{shown.length ? <div className="table-wrap"><table className="tracker">
+        <thead><tr><th>Code</th><th>Project / customer</th><th>Stages</th><th>Work</th><th>Next step</th><th>Due</th><th className="num">Value</th><th className="num">Received</th><th className="num">Balance</th></tr></thead>
+        <tbody>{shown.map(({ j, t }) => <tr key={j.id} className="click" onClick={() => open(j)}>
+          <td><span className="code-tag">{j.code}</span></td>
+          <td><b>{j.title}</b><div className="muted">{L.customer(j.customerId)?.name || '—'}</div></td>
+          <td><StageDots t={t} /><div className="muted" style={{ fontSize: 12 }}>{t.doneCount}/{t.stages.length} · {t.current?.short || 'Done'}</div></td>
+          <td><div className="mini-progress"><Progress value={t.progress} /><small>{t.progress}%</small></div></td>
+          <td className="next"><Badge tone={t.tone}>{t.next}</Badge></td>
+          <td>{j.dueDate ? <span className={t.late ? 'neg' : ''}>{fmtDate(j.dueDate)}</span> : '—'}</td>
+          <td className="num">{money(t.contract, s)}</td><td className="num pos">{money(t.collected, s)}</td>
+          <td className={`num ${t.balance > 0.0005 ? 'neg' : ''}`}><b>{money(t.balance, s)}</b></td>
+        </tr>)}</tbody></table></div> : <Empty title="No projects at this stage" />}</div>
     </>
   );
 }

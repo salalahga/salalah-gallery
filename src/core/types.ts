@@ -16,6 +16,8 @@ export interface Job extends Base {
   photos?: Photo[]; cutting?: CuttingList;
   /** Warranty given on completion (months) and the day the project was completed. */
   warrantyMonths?: number; completedDate?: string;
+  /** Day the project first reached each status (stage dates), and stages marked done by hand. */
+  stageDates?: Partial<Record<JobStatus, string>>; stageDone?: { quote?: string; billing?: string };
 }
 
 export type TaskStatus = 'todo' | 'doing' | 'review' | 'done';
@@ -98,6 +100,8 @@ export interface Settings {
   logoLight?: string; poBox?: string; paymentInfo?: string;
   /** Invoice numbering: empty prefix = plain numbers (1212, 1213…) continuing from invoiceStart. */
   invoicePrefix?: string; invoiceStart?: number;
+  /** Project codes: PREFIX-101 … or PREFIX-26-001 with the year. */
+  projectPrefix?: string; projectCodeYear?: boolean;
   businessNameAr?: string; addressAr?: string; arabicOnDocs?: boolean; docExpiryDays?: number;
   /** Cash & bank balances start from these amounts on openingDate. */
   openingCash?: number; openingBank?: number; openingDate?: string;
