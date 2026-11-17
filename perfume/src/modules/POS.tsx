@@ -6,6 +6,50 @@ import { parseCommand, matchVariants } from '../../shared/voice.js';
 import { Bottle, Card, Empty, Field, Modal, toast, toastError, useAction, useData } from '../components/ui';
 import { Icon } from '../components/Icon';
 import { Receipt } from './Receipt';
+import { ProductForm } from './Inventory';
+import { cleanScan } from '../../shared/barcode.js';
+
+/** Short confirmation beep (high = added, low = problem). Sound needs no files. */
+let audio: AudioContext | null = null;
+function beep(ok: boolean) {
+  try {
+    audio ||= new (window.AudioContext || (window as any).webkitAudioContext)();
+    const o = audio.createOscillator(), g = audio.createGain();
+    o.frequency.value = ok ? 1500 : 320; o.type = 'square'; g.gain.value = 0.05;
+    o.connect(g); g.connect(audio.destination); o.start(); o.stop(audio.currentTime + (ok ? 0.08 : 0.3));
+  } catch { /* no sound available */ }
+}
+
+/** Phone / tablet camera scanning (Chrome on Android, Edge; uses the built-in BarcodeDetector). */
+function CameraScan({ onCode, onClose }: { onCode: (c: string) => void; onClose: () => void }) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    let stream: MediaStream | null = null, stop = false;
+    (async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+        if (!video.current) return;
+        video.current.srcObject = stream; await video.current.play();
+        const det = new (window as any).BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128', 'code_39'] });
+        const loop = async () => {
+          if (stop || !video.current) return;
+          const found = await det.detect(video.current).catch(() => []);
+          if (found[0]?.rawValue) { onCode(found[0].rawValue); return; }
+          setTimeout(loop, 180);
+        };
+        loop();
+      } catch (e: any) { setErr(e?.name === 'NotAllowedError' ? 'Allow camera access to scan.' : 'Camera not available on this device.'); }
+    })();
+    return () => { stop = true; stream?.getTracks().forEach((t) => t.stop()); };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Modal title="Scan with camera" onClose={onClose}>
+      {err ? <div className="alert bad">{err}</div> : <video ref={video} playsInline muted style={{ width: '100%', borderRadius: 14, background: '#000' }} />}
+      <div className="small muted" style={{ marginTop: 8 }}>Hold the barcode inside the picture. It adds automatically when read.</div>
+    </Modal>
+  );
+}
 
 type Item = { id: string; sku: string; barcode?: string; name: string; name_ar?: string; brand?: string; label?: string; size_ml?: number; retail_price: number; qty: number; image_url?: string };
 type Line = { variantId: string; qty: number; unitPrice?: number };
@@ -64,12 +108,50 @@ export default function POS() {
     return list.filter((v) => [v.name, v.brand, v.sku, v.barcode, v.label, v.name_ar].some((x) => x && String(x).toLowerCase().includes(s))).slice(0, 60);
   }, [catalogue, search]);
 
-  // barcode scanners type the code and press Enter
+  // ---------- barcode scanning (main way to sell) ----------
+  // USB/Bluetooth scanners type the code very fast and press Enter. It works with the cursor in the
+  // search box or anywhere else on the screen. Arabic keyboard digits are converted automatically.
+  const [scan, setScan] = useState<{ kind: 'ready' | 'ok' | 'err'; text: string; code?: string }>({ kind: 'ready', text: 'Ready to scan — scan a bottle to add it' });
+  const [flash, setFlash] = useState<{ id: string; n: number } | null>(null);
+  const [newCode, setNewCode] = useState<string | null>(null);
+  const [camera, setCamera] = useState(false);
+  const handleScan = async (raw: string) => {
+    const code = cleanScan(raw);
+    if (!code) return;
+    const hit = (catalogue || []).find((v) => v.barcode === code || v.sku.toLowerCase() === code.toLowerCase());
+    if (hit) {
+      const inCart = cart.find((l) => l.variantId === hit.id)?.qty || 0;
+      if (hit.qty - inCart <= 0) { beep(false); setScan({ kind: 'err', text: `${variantName(hit)} — no stock left at this branch` }); return; }
+      add(hit); beep(true);
+      setFlash((f) => ({ id: hit.id, n: (f?.n || 0) + 1 }));
+      setScan({ kind: 'ok', text: `Added ${variantName(hit)} · ${money(hit.retail_price)} OMR` });
+      return;
+    }
+    beep(false);
+    const other = await api.get<any>('/barcodes/lookup' + qs({ code })).catch(() => null);
+    if (other && !other.active) setScan({ kind: 'err', text: `${variantName(other)} is switched off (inactive)`, code });
+    else setScan({ kind: 'err', text: `Barcode ${code} is not in the system`, code });
+  };
+  useEffect(() => {
+    let buf = '', last = 0;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if (document.querySelector('.modal-bg')) return;
+      const now = Date.now();
+      if (now - last > 60) buf = '';
+      last = now;
+      if (e.key === 'Enter') { if (buf.length >= 4) { e.preventDefault(); handleScan(buf); } buf = ''; return; }
+      if (e.key.length === 1) buf += e.key;
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  });
   const onSearchEnter = () => {
-    const s = search.trim();
+    const s = cleanScan(search);
     if (!s) return;
     const exact = (catalogue || []).find((v) => v.barcode === s || v.sku.toLowerCase() === s.toLowerCase());
-    if (exact) { add(exact); setSearch(''); return; }
+    if (exact || /^[0-9]{6,}$/.test(s)) { handleScan(s); setSearch(''); return; }
     if (shown.length === 1) { add(shown[0]); setSearch(''); return; }
     runCommand(s);
   };
@@ -152,7 +234,12 @@ export default function POS() {
       <div className="voice no-print" style={{ marginBottom: 12 }}>
         <button className={'mic' + (listening ? ' live' : '')} onClick={listen} title={t('Speak')} aria-label={t('Speak')}><Icon name="mic" size={20} /></button>
         <select value={voiceLang} onChange={(e) => setVoiceLang(e.target.value as 'en-US')} style={{ width: 'auto', background: '#1c1c21', color: '#f4ecd7', borderColor: '#33333a' }} aria-label="Voice language"><option value="en-US">EN</option><option value="ar-OM">ع</option></select>
+        {'BarcodeDetector' in window && <button className="mic" style={{ background: 'linear-gradient(135deg,#c8d6c4,#7f9a7b)' }} onClick={() => setCamera(true)} title="Scan with camera" aria-label="Scan with camera">▦</button>}
         <input ref={searchRef} value={search} onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSearchEnter()} placeholder="Scan barcode, search, or type a command: “add two Khamrah”, “apply 10% discount”, “check availability of Oud Wood”" autoFocus />
+      </div>
+      <div className={'scanbar no-print ' + scan.kind}>
+        <span className="dot" /><span className="grow">{scan.text}</span>
+        {scan.kind === 'err' && scan.code && can('inventory', 'create') && <button className="btn sm" onClick={() => setNewCode(scan.code!)}>Create product with this barcode</button>}
       </div>
       {voiceLog.length > 0 && <div className="col no-print" style={{ marginBottom: 10, gap: 4 }}>{voiceLog.slice(0, 3).map((v, i) => <div key={i} className={'small ' + (v.ok ? '' : 'bad')}>🎙 “{v.heard}” → {v.did}</div>)}</div>}
 
@@ -184,7 +271,7 @@ export default function POS() {
             const v = byId.get(l.variantId);
             const q = lineOf(l.variantId);
             return (
-              <div className="line" key={l.variantId}>
+              <div className={'line' + (flash?.id === l.variantId ? ' scanflash' : '')} key={l.variantId + (flash?.id === l.variantId ? flash.n : '')}>
                 <div>
                   <div style={{ fontWeight: 600 }}>{v ? variantName(v) : l.variantId}</div>
                   <div className="row small" style={{ gap: 6 }}>
@@ -233,6 +320,8 @@ export default function POS() {
         <Payment quote={quote} customer={quote.customer} tillOpen={!!reg} onClose={() => setPaying(false)} onPaid={(id) => { setPaying(false); setReceipt(id); clear(); reloadCat(); }}
           payload={{ branchId, items: cart, customerId: customer?.id, couponCode: coupon || undefined, manualDiscount: manual && manual.value ? { type: manual.type, value: manual.type === 'fixed' ? parseMoney(manual.value) : Number(manual.value) } : undefined }} />
       )}
+      {camera && <CameraScan onCode={(c) => { setCamera(false); handleScan(c); }} onClose={() => setCamera(false)} />}
+      {newCode && <ProductForm id={null} barcode={newCode} onClose={() => setNewCode(null)} onDone={() => { setNewCode(null); reloadCat(); setScan({ kind: 'ready', text: 'Product created — scan it again to add it' }); }} />}
       {receipt && <Receipt saleId={receipt} onClose={() => { setReceipt(null); searchRef.current?.focus(); }} />}
       {till && <Till mode={till} branchId={branchId} reg={reg} registers={registers} onClose={() => setTill(null)} onDone={() => { setTill(null); reloadRegs(); }} />}
     </>

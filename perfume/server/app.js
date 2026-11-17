@@ -15,6 +15,7 @@ import { dashboard } from './services/analytics.js';
 import { ask } from './services/assistant.js';
 import { notify, listFor } from './services/notify.js';
 import { ensureBase } from './seed.js';
+import { internalEan13, cleanScan } from '../shared/barcode.js';
 
 const COOKIE = 'pf_session';
 const ROLES = ['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff'];
@@ -392,10 +393,27 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     const vals = [str(v.sku, 40), str(v.barcode, 40), v.sizeMl ? posInt(v.sizeMl, 'size') : null, str(v.label, 40), money(v.retailPrice, 'retail price'), v.wholesalePrice != null && v.wholesalePrice !== '' ? money(v.wholesalePrice) : null,
       v.webPrice != null && v.webPrice !== '' ? money(v.webPrice) : null, v.vatRateBp == null ? 500 : int(v.vatRateBp), int(v.minStock || 0), !!v.trackExpiry, v.active !== false];
     must(vals[0], 400, 'Every size needs a SKU');
+    if (vals[1]) vals[1] = cleanScan(vals[1]);
+    // no barcode typed → give it an in-store EAN-13 so every bottle can be scanned and labelled
+    if (!vals[1] && !vid) vals[1] = await nextBarcode(q);
     if (vid) await q('UPDATE variants SET sku=$1, barcode=$2, size_ml=$3, label=$4, retail_price=$5, wholesale_price=$6, web_price=$7, vat_rate_bp=$8, min_stock=$9, track_expiry=$10, active=$11 WHERE id=$12', [...vals, vid]);
     else { vid = id('var_'); await q('INSERT INTO variants (sku, barcode, size_ml, label, retail_price, wholesale_price, web_price, vat_rate_bp, min_stock, track_expiry, active, id, product_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)', [...vals, vid, productId]); }
     return vid;
   }
+  async function nextBarcode(q) {
+    for (;;) {
+      const r = await q.one(`INSERT INTO counters (key, value) VALUES ('barcode', 1) ON CONFLICT (key) DO UPDATE SET value = counters.value + 1 RETURNING value`);
+      const code = internalEan13(r.value);
+      if (!(await q.one('SELECT 1 AS x FROM variants WHERE barcode = $1', [code]))) return code;
+    }
+  }
+  api.post('/barcodes/next', need('inventory', 'edit'), wrap(async (_req, res) => res.json({ barcode: await nextBarcode(db.query) })));
+  api.get('/barcodes/lookup', needAny(['pos', 'view'], ['inventory', 'view']), wrap(async (req, res) => {
+    const code = cleanScan(req.query.code);
+    const v = await db.one(`SELECT v.id, v.sku, v.barcode, v.size_ml, v.label, v.retail_price, v.active, p.name, b.name AS brand FROM variants v JOIN products p ON p.id = v.product_id
+      LEFT JOIN brands b ON b.id = p.brand_id WHERE v.barcode = $1 OR lower(v.sku) = lower($1)`, [code]);
+    res.json(v || null);
+  }));
   api.post('/products', need('inventory', 'create'), wrap(async (req, res) => {
     must(str(req.body.name), 400, 'Product name is required');
     const out = await tx(async (q) => {

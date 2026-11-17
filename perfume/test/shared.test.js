@@ -102,3 +102,13 @@ test('variant matching prefers the spoken size', () => {
 });
 
 function pick(r) { const { raw: _raw, explicit: _e, ...rest } = r; return rest; }
+
+import { ean13CheckDigit, isValidEan13, internalEan13, cleanScan } from '../shared/barcode.js';
+test('EAN-13 barcodes', () => {
+  assert.equal(ean13CheckDigit('629104150021'), '3'); // 6291041500213 is a valid EAN-13
+  assert.equal(isValidEan13('6291041500213'), true);
+  assert.equal(isValidEan13('6291041500214'), false);
+  assert.equal(internalEan13(1), '2900000000018');
+  assert.equal(isValidEan13(internalEan13(123456)), true);
+  assert.equal(cleanScan('٦٢٩١٠٤١٥٠٠٢١٣\r\n'), '6291041500213');
+});

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, qs } from '../core/api';
 import { t } from '../core/i18n';
 import { money, parseMoney, useSession, variantName, dateTime, date } from '../core/session';
+import { LabelPrinter, type LabelItem } from '../components/Labels';
 import { Bottle, Card, Empty, Field, Loading, Modal, PageHead, Status, Tabs, TestBadge, toast, useAction, useData, download } from '../components/ui';
 
 type Tab = 'stock' | 'transfers' | 'counts' | 'valuation' | 'expiry';
@@ -32,6 +33,8 @@ function Stock() {
   const [edit, setEdit] = useState<string | 'new' | null>(null);
   const [adj, setAdj] = useState<any>(null);
   const [moves, setMoves] = useState<any>(null);
+  const [labels, setLabels] = useState<LabelItem[] | null>(null);
+  const toLabel = (v: any, copies = 1): LabelItem => ({ id: v.id, barcode: v.barcode, sku: v.sku, name: v.name, brand: v.brand, label: v.label, size_ml: v.size_ml, retail_price: v.retail_price, copies });
   return (
     <>
       <div className="card row" style={{ marginBottom: 12 }}>
@@ -40,6 +43,7 @@ function Stock() {
         <label className="check"><input type="checkbox" checked={f.low} onChange={(e) => setF({ ...f, low: e.target.checked })} /> Low stock only</label>
         <div className="grow" />
         {can('reports', 'export') && <button className="btn" onClick={() => download('/export/inventory')}>CSV</button>}
+        {data && data.length > 0 && <button className="btn" onClick={() => setLabels(data.map((v) => toLabel(v, 1)))}>Print barcode labels</button>}
         {can('inventory', 'create') && <button className="btn primary" onClick={() => setEdit('new')}>+ Product</button>}
       </div>
       <div className="card tablewrap">
@@ -56,6 +60,7 @@ function Stock() {
                 <td className="num"><b className={v.qty <= 0 ? 'bad' : v.qty <= v.min_stock ? 'warn' : ''}>{v.qty}</b></td>
                 <td className="num muted">{v.min_stock}</td>
                 <td className="right" style={{ whiteSpace: 'nowrap' }}>
+                  <button className="btn ghost sm" onClick={() => setLabels([toLabel(v, Math.max(1, v.qty))])}>Label</button>
                   <button className="btn ghost sm" onClick={() => setMoves(v)}>History</button>
                   {can('inventory', 'manage') && <button className="btn ghost sm" onClick={() => setAdj(v)}>Adjust</button>}
                   {can('inventory', 'edit') && <button className="btn ghost sm" onClick={() => setEdit(v.product_id)}>Edit</button>}
@@ -68,11 +73,13 @@ function Stock() {
       {edit && <ProductForm id={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload(); }} />}
       {adj && <Adjust v={adj} branches={branches || []} onClose={() => setAdj(null)} onDone={() => { setAdj(null); reload(); }} />}
       {moves && <Movements v={moves} onClose={() => setMoves(null)} />}
+      {labels && <LabelPrinter items={labels} onClose={() => setLabels(null)} />}
     </>
   );
 }
 
-function ProductForm({ id, onClose, onDone }: { id: string | null; onClose: () => void; onDone: () => void }) {
+export function ProductForm({ id, onClose, onDone, barcode }: { id: string | null; onClose: () => void; onDone: () => void; barcode?: string }) {
+  const [printItems, setPrintItems] = useState<LabelItem[] | null>(null);
   const { me, can } = useSession();
   const { data: brands, reload: rb } = useData<any[]>('/brands');
   const { data: cats, reload: rc } = useData<any[]>('/categories');
@@ -87,7 +94,7 @@ function ProductForm({ id, onClose, onDone }: { id: string | null; onClose: () =
       name: e.name, nameAr: e.name_ar || '', brandId: e.brand_id || '', categoryId: e.category_id || '', gender: e.gender || '', concentration: e.concentration || '', description: e.description || '', descriptionAr: e.description_ar || '',
       notesTop: e.notes_top || '', notesHeart: e.notes_heart || '', notesBase: e.notes_base || '', imageUrl: e.image_url || '', webVisible: e.web_visible, active: e.active,
       variants: e.variants.map((v: any) => ({ id: v.id, sizeMl: v.size_ml ?? '', label: v.label || '', sku: v.sku, barcode: v.barcode || '', retailPrice: money(v.retail_price), webPrice: v.web_price != null ? money(v.web_price) : '', wholesalePrice: v.wholesale_price != null ? money(v.wholesale_price) : '', vatRateBp: v.vat_rate_bp, minStock: v.min_stock, active: v.active })),
-    } : { name: '', nameAr: '', brandId: '', categoryId: '', gender: 'unisex', concentration: 'Eau de Parfum', description: '', descriptionAr: '', notesTop: '', notesHeart: '', notesBase: '', imageUrl: '', webVisible: true, active: true, variants: [blankVariant()] });
+    } : { name: '', nameAr: '', brandId: '', categoryId: '', gender: 'unisex', concentration: 'Eau de Parfum', description: '', descriptionAr: '', notesTop: '', notesHeart: '', notesBase: '', imageUrl: '', webVisible: true, active: true, variants: [{ ...blankVariant(), barcode: barcode || '' }] });
     return null;
   }
   const set = (k: string, v: unknown) => setP({ ...p, [k]: v });
@@ -101,8 +108,18 @@ function ProductForm({ id, onClose, onDone }: { id: string | null; onClose: () =
   const addCat = async () => { const n = prompt('Category name'); if (n) { const r = await api.post('/categories', { name: n }); await rc(); set('categoryId', r.id); } };
   const save = () => run(async () => {
     const body = { ...p, branchId: me.user.branchId || 'br_main', variants: p.variants.map((v: any) => ({ ...v, retailPrice: parseMoney(v.retailPrice), webPrice: v.webPrice ? parseMoney(v.webPrice) : null, wholesalePrice: v.wholesalePrice ? parseMoney(v.wholesalePrice) : null, unitCost: v.unitCost ? parseMoney(v.unitCost) : 0, openingQty: v.openingQty ? Number(v.openingQty) : 0, sizeMl: v.sizeMl ? Number(v.sizeMl) : null, vatRateBp: Number(v.vatRateBp), minStock: Number(v.minStock) })) };
-    return id ? api.put(`/products/${id}`, body) : api.post('/products', body);
-  }, 'Product saved').then((r) => r && onDone());
+    const r = id ? await api.put(`/products/${id}`, body) : await api.post('/products', body);
+    // offer barcode labels straight away (copies = opening stock for new products)
+    const saved = await api.get(`/products/${id || r.id}`);
+    const brand = brands?.find((b) => b.id === p.brandId)?.name;
+    setPrintItems(saved.variants.map((v: any) => {
+      const typed = p.variants.find((x: any) => x.sku === v.sku);
+      return { id: v.id, barcode: v.barcode, sku: v.sku, name: saved.name, brand, label: v.label, size_ml: v.size_ml, retail_price: v.retail_price, copies: Number(typed?.openingQty) || 1 };
+    }));
+    return r;
+  }, 'Product saved');
+  const genBarcode = async (i: number) => { const r = await api.post('/barcodes/next').catch((e) => toast(e.message, true)); if (r) setV(i, 'barcode', r.barcode); };
+  if (printItems) return <LabelPrinter items={printItems} onClose={() => { setPrintItems(null); onDone(); }} />;
   return (
     <Modal wide title={id ? 'Edit product' : 'New product'} onClose={onClose} footer={<button className="btn primary" disabled={busy || !p.name} onClick={save}>Save</button>}>
       <div className="grid g2">
@@ -137,7 +154,7 @@ function ProductForm({ id, onClose, onDone }: { id: string | null; onClose: () =
             <td><input value={v.sizeMl} onChange={(e) => setV(i, 'sizeMl', e.target.value)} style={{ width: 64 }} /></td>
             <td><input value={v.label} onChange={(e) => setV(i, 'label', e.target.value)} style={{ width: 80 }} /></td>
             <td><input value={v.sku} onChange={(e) => setV(i, 'sku', e.target.value)} style={{ width: 120 }} /></td>
-            <td><input value={v.barcode} onChange={(e) => setV(i, 'barcode', e.target.value)} style={{ width: 130 }} /></td>
+            <td style={{ whiteSpace: 'nowrap' }}><input value={v.barcode} onChange={(e) => setV(i, 'barcode', e.target.value)} placeholder="scan / auto" style={{ width: 130 }} /> <button className="btn ghost sm" title="Generate an in-store barcode" onClick={() => genBarcode(i)}>Generate</button></td>
             <td><input value={v.retailPrice} onChange={(e) => setV(i, 'retailPrice', e.target.value)} style={{ width: 80 }} /></td>
             <td><input value={v.webPrice} onChange={(e) => setV(i, 'webPrice', e.target.value)} style={{ width: 80 }} /></td>
             <td><input value={v.wholesalePrice} onChange={(e) => setV(i, 'wholesalePrice', e.target.value)} style={{ width: 80 }} /></td>
@@ -153,6 +170,7 @@ function ProductForm({ id, onClose, onDone }: { id: string | null; onClose: () =
         ))}</tbody>
       </table></div>
       <button className="btn sm" onClick={() => set('variants', [...p.variants, blankVariant()])}>+ Size</button>
+      <div className="small muted" style={{ marginTop: 6 }}>Barcode: scan the code printed on the perfume box, or leave it empty and an in-store barcode is created automatically. Labels can be printed right after saving.</div>
       <div className="small muted" style={{ marginTop: 6 }}>VAT is in basis points: 500 = 5 %. Opening stock goes to your branch and is booked at the unit cost.</div>
     </Modal>
   );

@@ -286,3 +286,14 @@ test('login lockout after repeated wrong passwords', async () => {
   const r = await client().post('/auth/login', { username: 'staff', password: 'Demo1234' });
   assert.equal(r.status, 429);
 });
+
+test('new products get a scannable in-store barcode automatically', async () => {
+  const r = await owner.post('/products', { name: 'Test Musk', variants: [{ sku: 'TST-MUSK-50', sizeMl: 50, retailPrice: 9000 }] });
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  const v = await db.one('SELECT barcode FROM variants WHERE id = $1', [r.data.variants[0]]);
+  assert.match(v.barcode, /^29\d{11}$/);
+  const look = await owner.get('/barcodes/lookup?code=' + v.barcode);
+  assert.equal(look.data.sku, 'TST-MUSK-50');
+  const nx = await owner.post('/barcodes/next');
+  assert.notEqual(nx.data.barcode, v.barcode);
+});
