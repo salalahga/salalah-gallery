@@ -9,11 +9,11 @@ import { lookup, waLink, daysFrom } from '../core/helpers';
 import { Modal, Field, PageHeader, Tabs, Empty, Badge, Stat, SearchBox, toast, confirmDelete } from '../components/ui';
 import { Letterhead, Bi, Signatures } from '../components/DocParts';
 
-export const poTotal = (p: Pick<Purchase, 'lines' | 'vat'>) => { const sub = p.lines.reduce((n, l) => n + (Number(l.qty) || 0) * (Number(l.rate) || 0), 0); return sub * (1 + (Number(p.vat) || 0) / 100); };
+export const poTotal = (p: Pick<Purchase, 'lines' | 'vat'>) => { const sub = p.lines.reduce((n, l) => n + (Number(l.qty) || 0) * (Number(l.rate) || 0), 0); return Math.round(sub * (1 + (Number(p.vat) || 0) / 100) * 1000) / 1000; };
 /** Value of goods sent back, and money the supplier refunded for them. */
 export const poReturned = (p: Pick<Purchase, 'returns'>) => (p.returns || []).reduce((n, r) => n + r.amount, 0);
 const poRefunded = (p: Pick<Purchase, 'returns'>) => (p.returns || []).reduce((n, r) => n + (Number(r.refund) || 0), 0);
-export const poDue = (p: Purchase) => (p.status === 'cancelled' ? 0 : Math.max(0, poTotal(p) - poReturned(p) - (Number(p.paid) || 0) + poRefunded(p)));
+export const poDue = (p: Purchase) => (p.status === 'cancelled' ? 0 : Math.max(0, Math.round((poTotal(p) - poReturned(p) - (Number(p.paid) || 0) + poRefunded(p)) * 1000) / 1000));
 
 export interface SupLine { date: string; ref: string; text: string; debit: number; credit: number }
 /** Supplier ledger: bills (credit = we owe), payments and returns (debit). Positive balance = we owe them. */

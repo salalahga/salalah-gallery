@@ -4,7 +4,7 @@ import { store, today } from './store';
 /** Material groups used in a carpentry workshop (Inventory → category). */
 export const STOCK_CATEGORIES = ['Timber', 'Plywood', 'MDF', 'Veneer', 'Laminates', 'Hardware', 'Handles', 'Hinges', 'Screws', 'Paints', 'Polish', 'Accessories', 'Boards & Sheets', 'Other'];
 export const locations = (db: Pick<DB, 'settings'>) => (db.settings.stockLocations?.length ? db.settings.stockLocations : ['Main store']);
-export const MOVE_LABEL: Record<StockMove['kind'], string> = { in: 'Stock in', out: 'Issued to project', transfer: 'Transfer', waste: 'Wastage', adjust: 'Stock count', return: 'Returned to supplier' };
+export const MOVE_LABEL: Record<StockMove['kind'], string> = { in: 'Stock in', out: 'Issued to project', transfer: 'Transfer', waste: 'Wastage', adjust: 'Stock count', return: 'Returned to supplier', sale: 'Shop sale', saleReturn: 'Sale returned' };
 
 /** Quantity at each location; whatever is not assigned to a location sits in the first one. */
 export function locQty(db: Pick<DB, 'settings'>, it: Item): Record<string, number> {
@@ -21,14 +21,14 @@ export function locQty(db: Pick<DB, 'settings'>, it: Item): Record<string, numbe
  * project's materials so it counts in the project cost (at the item's cost price).
  * Returns an error message instead of saving when there is not enough stock.
  */
-export function moveStock(db: DB, m: Omit<StockMove, 'id' | 'createdAt'>, by?: string): string | null {
+export function moveStock(db: DB, m: Omit<StockMove, 'id' | 'createdAt'>, by?: string, opts: { skipJob?: boolean } = {}): string | null {
   const it = db.items.find((i) => i.id === m.itemId); if (!it) return 'Choose an item';
   const qty = Number(m.qty) || 0; if (qty <= 0 && m.kind !== 'adjust') return 'Enter a quantity';
   const locs = locations(db); const lq = locQty(db, it);
   const from = m.from || locs[0]; const to = m.to || locs[0];
   let total = Number(it.qty) || 0;
-  if (m.kind === 'in') { lq[to] = (lq[to] || 0) + qty; total += qty; }
-  else if (m.kind === 'out' || m.kind === 'waste' || m.kind === 'return') {
+  if (m.kind === 'in' || m.kind === 'saleReturn') { lq[to] = (lq[to] || 0) + qty; total += qty; }
+  else if (m.kind === 'out' || m.kind === 'waste' || m.kind === 'return' || m.kind === 'sale') {
     if ((lq[from] || 0) < qty - 1e-9) return `Only ${lq[from] || 0} ${it.unit} of ${it.name} at ${from}`;
     lq[from] -= qty; total -= qty;
   } else if (m.kind === 'transfer') {
@@ -41,8 +41,8 @@ export function moveStock(db: DB, m: Omit<StockMove, 'id' | 'createdAt'>, by?: s
   }
   const cost = m.kind === 'in' && Number(m.cost) > 0 ? Number(m.cost) : it.cost;
   store.upsert('items', { ...it, qty: Math.max(0, +total.toFixed(4)), locQty: lq, cost });
-  store.upsert('stockMoves', { ...m, qty, from: m.kind === 'in' ? undefined : from, to: ['in', 'transfer'].includes(m.kind) ? to : undefined, cost: Number(m.cost) || it.cost, date: m.date || today(), by });
-  if (m.kind === 'out' && m.jobId) {
+  store.upsert('stockMoves', { ...m, qty, from: ['in', 'saleReturn'].includes(m.kind) ? undefined : from, to: ['in', 'transfer', 'saleReturn'].includes(m.kind) ? to : undefined, cost: Number(m.cost) || it.cost, date: m.date || today(), by });
+  if (m.kind === 'out' && m.jobId && !opts.skipJob) {
     const job = db.jobs.find((j) => j.id === m.jobId);
     if (job) {
       const mats = [...(job.materials || [])]; const k = mats.findIndex((x) => x.itemId === it.id);

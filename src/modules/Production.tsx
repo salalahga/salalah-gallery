@@ -3,6 +3,7 @@ import { Factory, Plus, Check, ClipboardList, CalendarDays } from 'lucide-react'
 import { store, useDB, today, uid, nextNumber } from '../core/store';
 import type { Job, ProdLog, ProdStage } from '../core/types';
 import { fmtDate } from '../core/calc';
+import { withStatus } from '../core/stages';
 import { lookup, daysFrom } from '../core/helpers';
 import { go } from '../core/router';
 import { useCanWrite, useUser } from '../core/session';
@@ -28,7 +29,7 @@ export default function Production() {
 
   const start = (j: Job) => {
     const orderNo = nextNumber('PRD', db.jobs.map((x) => x.production?.orderNo || ''));
-    persist({ ...j, status: ['enquiry', 'design'].includes(j.status) ? 'production' : j.status, production: { orderNo, started: today(), stage: 'cutting', done: {}, log: [] } });
+    persist({ ...withStatus({ ...j }, ['enquiry', 'design'].includes(j.status) ? 'production' : j.status, today()), production: { orderNo, started: today(), stage: 'cutting', done: {}, log: [] } });
     toast(`Production order ${orderNo} started for ${j.code}`);
   };
   const finishStage = (j: Job) => {
@@ -36,7 +37,11 @@ export default function Production() {
     const done = { ...p.done, [p.stage]: today() }; const next = PROD_STAGES[i + 1]?.id;
     const entry: ProdLog = { id: uid(), date: today(), stage: p.stage, text: `${PROD_STAGES[i].label} finished`, by: user?.name };
     const progress = Math.max(j.progress || 0, Math.round(30 + (Object.keys(done).length / PROD_STAGES.length) * 55));
-    persist({ ...j, progress, status: next ? (['polishing', 'finishing', 'qc', 'packing', 'dispatch'].includes(next) ? 'finishing' : j.status) : 'finishing', production: { ...p, done, stage: next || p.stage, log: [entry, ...(p.log || [])] } });
+    // production only moves a project forward (never back from installation / completed)
+    const ORDER = ['enquiry', 'design', 'production', 'finishing', 'installation', 'completed'];
+    const want = !next || ['polishing', 'finishing', 'qc', 'packing', 'dispatch'].includes(next) ? 'finishing' : 'production';
+    const status = ORDER.indexOf(want) > ORDER.indexOf(j.status) ? want : j.status;
+    persist({ ...withStatus({ ...j }, status, today()), progress, production: { ...p, done, stage: next || p.stage, log: [entry, ...(p.log || [])] } });
     toast(next ? `${j.code}: now ${PROD_STAGES[i + 1].label}` : `${j.code}: ready for delivery`);
   };
   const saveLog = () => {

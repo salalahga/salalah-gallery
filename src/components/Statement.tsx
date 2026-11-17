@@ -36,7 +36,7 @@ export function customerLedger(db: DB, customerId: string): StatementLine[] {
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || a.order - b.order);
 }
-export const ledgerBalance = (lines: StatementLine[]) => lines.reduce((n, l) => n + l.debit - l.credit, 0);
+export const ledgerBalance = (lines: StatementLine[]) => Math.round(lines.reduce((n, l) => n + l.debit - l.credit, 0) * 1000) / 1000;
 
 export function CustomerStatement({ customer, onClose }: { customer: Customer; onClose: () => void }) {
   const db = useDB(); const s = db.settings;
