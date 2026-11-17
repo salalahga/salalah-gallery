@@ -801,7 +801,10 @@ export async function createApp(db, { secureCookies = false, setupCode = process
 
   // ---------- dashboard, assistant, notifications ----------
   api.get('/dashboard', needAny(['dashboard', 'view'], ['sales', 'view']), wrap(async (req, res) => {
-    res.json(await dashboard(db.query, { branchIds: scopeOf(req, 'dashboard'), showMoney: can(req.perms, 'finance', 'view') }));
+    const sc = scopeOf(req, 'dashboard');
+    const pick = req.query.branchId ? [String(req.query.branchId)] : null;
+    if (pick && sc) must(sc.includes(pick[0]), 403, 'You do not have access to this branch');
+    res.json(await dashboard(db.query, { branchIds: pick || sc, showMoney: can(req.perms, 'finance', 'view') }));
   }));
   api.post('/assistant', needAny(['assistant', 'view'], ['dashboard', 'view']), wrap(async (req, res) => {
     const question = str(req.body.question, 500);

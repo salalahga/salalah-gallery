@@ -25,7 +25,7 @@ export const ROLE_DEFAULTS = {
   manager: { dashboard: V, sales: V, pos: V, inventory: V, purchases: V, promotions: V, customers: V, staff: V, branches: V, online: V, whatsapp: V, reports: V },
   accountant: { dashboard: V, finance: ALL, payments: ALL, reports: VX, purchases: ['view', 'create', 'edit'], sales: V, inventory: V, customers: V, assistant: V },
   hr: { dashboard: V, hr: ALL, staff: ALL, reports: VX },
-  cashier: { pos: VC, customers: VC, inventory: V, sales: V, promotions: V },
+  cashier: { pos: VC, customers: VC, inventory: V, promotions: V }, // cashiers see only their own sales
   staff: { pos: VC, customers: VC, inventory: V },
 };
 

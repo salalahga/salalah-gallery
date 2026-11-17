@@ -34,7 +34,6 @@ if (fs.existsSync(dist)) {
   const page = (f) => (_req, res) => res.sendFile(path.join(dist, f));
   app.get(/^\/manager(\/.*)?$/, page('manager.html'));
   app.get(/^\/staff(\/.*)?$/, page('staff.html'));
-  app.get(/^\/shop(\/.*)?$/, page('shop.html'));
   app.get(/^\/(?!api\/).*/, page('index.html'));
 }
 app.listen(PORT, () => console.log(`Perfume business system on http://localhost:${PORT} (database: ${db.kind})`));
