@@ -15,10 +15,13 @@ export interface StatementLine { date: string; ref: string; text: string; debit:
  */
 export function customerLedger(db: DB, customerId: string): StatementLine[] {
   const out: StatementLine[] = [];
+  const cust = db.customers.find((c) => c.id === customerId); const ob = Number(cust?.openingBalance) || 0;
+  if (ob) out.push({ date: cust?.openingDate || (cust?.createdAt || '').slice(0, 10) || '2000-01-01', ref: 'OPEN', text: 'Opening balance', debit: Math.max(0, ob), credit: Math.max(0, -ob), order: -1 });
   const invoices = db.invoices.filter((i) => i.customerId === customerId);
   const receipts = db.receipts.filter((r) => r.customerId === customerId && !r.voided);
   for (const i of invoices) {
-    out.push({ date: i.date, ref: i.number, text: `Invoice${i.title ? ' — ' + i.title : ''}`, debit: docTotals(i).total, credit: 0, order: 0 });
+    const tt = docTotals(i);
+    out.push({ date: i.date, ref: i.number, text: `Invoice${i.title ? ' — ' + i.title : ''}${tt.discount ? ` (after discount ${tt.discount.toFixed(3)})` : ''}`, debit: tt.total, credit: 0, order: 0 });
     // payments typed straight onto an invoice by older versions (no receipt behind them)
     const viaReceipts = receipts.filter((r) => r.kind === 'payment' && r.invoiceId === i.id).reduce((n, r) => n + r.amount, 0);
     const viaAdvances = i.advanceCredits ? i.advanceCredits.reduce((n, c) => n + c.amount, 0)

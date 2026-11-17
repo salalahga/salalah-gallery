@@ -3,7 +3,12 @@ export type ID = string;
 export interface Base { id: ID; createdAt: string; updatedAt?: string }
 
 export interface Customer extends Base { name: string; phone?: string; email?: string; address?: string; type?: string; notes?: string;
-  /** Customer ID shown on documents (C-0001…). */ code?: string; whatsapp?: string; photos?: Photo[]; attachments?: Attachment[] }
+  /** Customer ID shown on documents (C-0001…). */ code?: string; whatsapp?: string; photos?: Photo[]; attachments?: Attachment[];
+  /** Amount the customer already owed (+) or had paid in advance (−) when their ledger started. */
+  openingBalance?: number; openingDate?: string;
+  /** CRM: where the enquiry came from and how far the lead has got. */
+  source?: string; leadStatus?: LeadStatus; enquiry?: string; nextFollowUp?: string }
+export type LeadStatus = 'new' | 'contacted' | 'quoted' | 'won' | 'lost';
 /** A stored file (drawing, design, PDF, document). */
 export interface Attachment { id: ID; url: string; name: string; type: string; at: string; kind?: string }
 
@@ -27,7 +32,13 @@ export interface Job extends Base {
   updates?: { id: ID; at: string; by?: string; text: string; photos?: string[] }[];
   siteAddress?: string; description?: string; /** Estimated cost budget for the project. */ budget?: number;
   attachments?: Attachment[];
+  /** Workshop production: order number, current stage, when each stage was finished, daily production log. */
+  production?: { orderNo: string; started: string; stage: ProdStage; done: Partial<Record<ProdStage, string>>; log: ProdLog[] };
+  /** Final account approved and project closed (owner only). */
+  closedAt?: string; closedBy?: string; closeNote?: string;
 }
+export type ProdStage = 'cutting' | 'assembly' | 'sanding' | 'polishing' | 'finishing' | 'qc' | 'packing' | 'dispatch';
+export interface ProdLog { id: ID; date: string; stage: ProdStage; text: string; staffIds?: ID[]; hours?: number; by?: string }
 
 export type TaskStatus = 'todo' | 'doing' | 'review' | 'done';
 export interface Task extends Base { title: string; jobId?: ID; staffId?: ID; status: TaskStatus; priority: 'low' | 'normal' | 'high' | 'urgent'; dueDate?: string; hours?: number; notes?: string;
@@ -85,12 +96,28 @@ export interface Txn extends Base {
   account?: MoneyAccount; toAccount?: MoneyAccount; recurringId?: ID;
   /** Pictures of the bill / receipt. */
   photos?: string[]; chatId?: ID;
+  /** Entered in another currency: original amount and the rate used (amount is always in the home currency). */
+  fx?: { currency: string; amount: number; rate: number };
+  /** Supplier and bill number read from the bill, for duplicate checks. */
+  vendor?: string; billNo?: string; vat?: number;
 }
 
 export interface Item extends Base {
   name: string; kind: 'material' | 'product'; category: string; sku?: string; unit: string; qty: number; cost: number; price: number;
   reorder: number; thickness?: string; size?: string; image?: string; description?: string; showOnWebsite?: boolean;
+  /** Quantity kept at each store location (the total is qty). */
+  locQty?: Record<string, number>;
 }
+/** Every stock movement: received, issued to a project, moved between stores, wasted or counted. */
+export interface StockMove extends Base {
+  date: string; itemId: ID; kind: 'in' | 'out' | 'transfer' | 'waste' | 'adjust' | 'return'; qty: number; cost?: number;
+  jobId?: ID; from?: string; to?: string; note?: string; purchaseId?: ID; by?: string;
+}
+/** Manual double-entry journal (opening balances, adjustments, depreciation, owner capital…). */
+export interface JournalLine { account: string; debit: number; credit: number; jobId?: ID; note?: string }
+export interface Journal extends Base { number: string; date: string; memo: string; lines: JournalLine[]; by?: string }
+/** Staff daily work report. */
+export interface WorkReport extends Base { date: string; staffId: ID; jobId?: ID; hours: number; text: string; rating?: number }
 
 export interface SaleReturn { id: ID; date: string; lines: { itemId: ID; qty: number }[]; amount: number; method: string; reason?: string }
 export interface Sale extends Base { number: string; date: string; customerId?: ID; lines: { itemId: ID; name: string; qty: number; price: number }[]; discount: number; vat: number; method: string; returns?: SaleReturn[] }
@@ -118,6 +145,14 @@ export interface Settings {
   openingCash?: number; openingBank?: number; openingDate?: string;
   /** End-of-service gratuity (days of basic wage per year of service) and paid annual leave days per year. */
   gratuityDaysPerYear?: number; annualLeaveDays?: number;
+  /** Store locations for stock transfers (Main store, Workshop, Site…). */
+  stockLocations?: string[];
+  /** Other currencies and their rate to the home currency (1 USD = 0.385 OMR). */
+  currencies?: { code: string; rate: number }[];
+  /** Named VAT rates (Oman: standard 5%, zero-rated 0%, exempt). */
+  taxRates?: { name: string; rate: number }[];
+  /** Notifications: amount from which a single money entry is flagged as important. */
+  bigTxn?: number;
   /** Non-secret plugin switches and options, shared with every device. Secrets live on the server only. */
   plugins?: Record<string, PluginState>;
 }
@@ -129,6 +164,7 @@ export interface DB {
   suppliers: Supplier[]; purchases: Purchase[]; receipts: Receipt[]; deliveries: Delivery[]; measurements: Measurement[];
   cheques: Cheque[]; creditNotes: CreditNote[]; services: ServiceCall[]; recurring: Recurring[];
   brands: Brand[]; catalog: CatalogItem[]; selections: Selection[]; expenseChat: ExpenseMsg[];
+  stockMoves: StockMove[]; journals: Journal[]; workReports: WorkReport[];
   settings: Settings;
 }
 export type Collection = Exclude<keyof DB, 'settings'>;
@@ -138,6 +174,9 @@ export interface PurchaseLine { id: ID; itemId?: ID; description: string; qty: n
 export interface Purchase extends Base {
   number: string; date: string; supplierId?: ID; jobId?: ID; status: 'ordered' | 'received' | 'cancelled'; lines: PurchaseLine[];
   vat: number; paid: number; dueDate?: string; billNo?: string; notes?: string; receivedDate?: string;
+  /** Supplier payments made against this purchase and goods sent back. */
+  payments?: { id: ID; date: string; amount: number; method: string; txnId?: ID; chequeNo?: string }[];
+  returns?: { id: ID; date: string; lines: { lineId: ID; qty: number }[]; amount: number; reason?: string; refund?: number; txnId?: ID }[];
 }
 export interface Receipt extends Base {
   number: string; date: string; customerId?: ID; amount: number; method: string; kind: 'advance' | 'payment';

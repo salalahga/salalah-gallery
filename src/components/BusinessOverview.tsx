@@ -6,7 +6,7 @@ import { go } from '../core/router';
 import { balances, docTotals, fmtDate, invoiceBalance, money, projectFinance, saleTotals } from '../core/calc';
 import { lookup, daysFrom } from '../core/helpers';
 import { projectTrack } from '../core/stages';
-import { poTotal } from '../modules/Purchases';
+import { poDue } from '../modules/Purchases';
 import { Stat, Badge, Empty } from './ui';
 
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -32,7 +32,7 @@ export function BusinessOverview() {
   const pending = db.jobs.filter((j) => ['enquiry', 'design'].includes(j.status));
   const completed = db.jobs.filter((j) => j.status === 'completed' && (!j.completedDate || (j.completedDate >= a && j.completedDate <= b)));
   const bal = balances(db);
-  const payables = db.purchases.reduce((n, x) => n + (x.status === 'cancelled' ? 0 : Math.max(0, poTotal(x) - (Number(x.paid) || 0))), 0);
+  const payables = db.purchases.reduce((n, x) => n + poDue(x), 0);
   const outstanding = db.invoices.reduce((n, i) => n + Math.max(0, invoiceBalance(i)), 0);
   const open = db.jobs.filter((j) => !['completed', 'cancelled'].includes(j.status));
   const upcoming = open.filter((j) => j.dueDate && (daysFrom(j.dueDate) ?? -1) >= 0 && (daysFrom(j.dueDate) ?? 99) <= 14).sort((x, y) => x.dueDate!.localeCompare(y.dueDate!));

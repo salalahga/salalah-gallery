@@ -3,7 +3,7 @@ import { Download, Printer, Percent, Users, Truck, IdCard, ScrollText } from 'lu
 import { useDB, today } from '../core/store';
 import type { Customer, DB } from '../core/types';
 import { docTotals, fmtDate, invoiceBalance, money, saleTotals, staffEntitlements } from '../core/calc';
-import { poTotal } from './Purchases';
+import { poTotal, poDue } from './Purchases';
 import { daysFrom } from '../core/helpers';
 import { PageHeader, Tabs, Stat, Empty, Badge } from '../components/ui';
 import { CustomerStatement, customerLedger, ledgerBalance } from '../components/Statement';
@@ -124,7 +124,7 @@ function Receivables() {
 
 function Payables() {
   const db = useDB(); const s = db.settings;
-  const due = (p: DB['purchases'][number]) => (p.status === 'cancelled' ? 0 : Math.max(0, poTotal(p) - (Number(p.paid) || 0)));
+  const due = (p: DB['purchases'][number]) => poDue(p);
   const rows = db.suppliers.map((x) => {
     const b = [0, 0, 0, 0, 0];
     for (const p of db.purchases.filter((y) => y.supplierId === x.id && due(y) > 0.0005)) b[bucket(p.dueDate || p.date)] += due(p);

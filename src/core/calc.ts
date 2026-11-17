@@ -42,6 +42,11 @@ export function balances(db: DB) {
     if (t.kind === 'transfer') { b[t.account || 'cash'] -= t.amount; b[t.toAccount || 'bank'] += t.amount; continue; }
     b[accountOf(t)] += t.kind === 'income' ? t.amount : -t.amount;
   }
+  // manual journal lines on Cash / Bank (Finance → Journal entries)
+  for (const j of db.journals || []) {
+    if (from && j.date < from) continue;
+    for (const l of j.lines) { if (l.account === 'Cash') b.cash += (Number(l.debit) || 0) - (Number(l.credit) || 0); if (l.account === 'Bank') b.bank += (Number(l.debit) || 0) - (Number(l.credit) || 0); }
+  }
   const pendingIn = db.cheques.filter((c) => c.direction === 'received' && ['pending', 'deposited'].includes(c.status)).reduce((n, c) => n + c.amount, 0);
   const pendingOut = db.cheques.filter((c) => c.direction === 'issued' && ['pending', 'deposited'].includes(c.status)).reduce((n, c) => n + c.amount, 0);
   return { ...b, total: b.cash + b.bank, pendingIn, pendingOut };
