@@ -4,12 +4,15 @@ export const lineTotal = (l: LineItem) => (Number(l.qty) || 0) * (Number(l.rate)
 export function docTotals(d: Pick<Quotation | Invoice, 'items' | 'discount' | 'vat'>) {
   const subtotal = d.items.reduce((s, l) => s + lineTotal(l), 0);
   const discount = Number(d.discount) || 0;
-  const taxable = Math.max(0, subtotal - discount);
-  const vat = taxable * ((Number(d.vat) || 0) / 100);
-  return { subtotal, discount, taxable, vat, total: taxable + vat };
+  // amounts are kept to 3 decimals (baisa) so a total paid in full leaves no 0.0004 "balance";
+  // VAT is worked out on the taxable amount as printed on the document
+  const taxable = r3(Math.max(0, subtotal - discount));
+  const vat = r3(taxable * ((Number(d.vat) || 0) / 100));
+  return { subtotal: r3(subtotal), discount, taxable, vat, total: r3(taxable + vat) };
 }
+export const r3 = (n: number) => Math.round((n + Number.EPSILON) * 1000) / 1000;
 /** What the customer still owes: total − paid − credit notes. */
-export const invoiceBalance = (inv: Invoice) => docTotals(inv).total - (Number(inv.paid) || 0) - (Number(inv.credited) || 0);
+export const invoiceBalance = (inv: Invoice) => r3(docTotals(inv).total - (Number(inv.paid) || 0) - (Number(inv.credited) || 0));
 export const invoiceStatus = (inv: Invoice) => {
   const t = docTotals(inv).total - (Number(inv.credited) || 0); const p = Number(inv.paid) || 0;
   return p >= t - 0.001 && (p > 0 || t <= 0.001) ? 'paid' : p <= 0 ? 'unpaid' : 'partial';
@@ -21,9 +24,9 @@ export const quoteState = (q: Quotation, today = new Date().toISOString().slice(
 /** POS sale totals; returns refund part of the bill. */
 export function saleTotals(x: Sale) {
   const sub = x.lines.reduce((n, l) => n + l.qty * l.price, 0);
-  const total = Math.max(0, sub - (Number(x.discount) || 0)) * (1 + (Number(x.vat) || 0) / 100);
+  const total = r3(Math.max(0, sub - (Number(x.discount) || 0)) * (1 + (Number(x.vat) || 0) / 100));
   const returned = (x.returns || []).reduce((n, r) => n + r.amount, 0);
-  return { sub, total, returned, net: total - returned };
+  return { sub, total, returned, net: r3(total - returned) };
 }
 /** Refund for returning `qty` of each line: the line's share of the bill after discount, with VAT. */
 export function returnAmount(x: Sale, lines: { itemId: string; qty: number }[]) {

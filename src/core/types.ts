@@ -110,7 +110,8 @@ export interface Item extends Base {
 }
 /** Every stock movement: received, issued to a project, moved between stores, wasted or counted. */
 export interface StockMove extends Base {
-  date: string; itemId: ID; kind: 'in' | 'out' | 'transfer' | 'waste' | 'adjust' | 'return'; qty: number; cost?: number;
+  date: string; itemId: ID; kind: 'in' | 'out' | 'transfer' | 'waste' | 'adjust' | 'return' | 'sale' | 'saleReturn';
+  saleId?: ID; qty: number; cost?: number;
   jobId?: ID; from?: string; to?: string; note?: string; purchaseId?: ID; by?: string;
 }
 /** Manual double-entry journal (opening balances, adjustments, depreciation, owner capital…). */

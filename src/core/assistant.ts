@@ -72,8 +72,11 @@ export function answer(db: DB, input: string, today: string): Answer {
   const job = findJob(db, input);
 
   // ---- money entries (never saved here) ----
-  if (/\b(add|record|enter|log|put|upload|book|spent|paid|pay)\b/.test(t) && (parseAmount(input.replace(/project\s*#?\s*[\w-]+/i, '')) || /upload|receipt|bill/.test(t))) {
-    const amount = parseAmount(input.replace(/(?:project|job)\s*#?\s*[\w-]*\d[\w-]*/ig, ' ').replace(/\b(19|20)\d{2}-\d{2}-\d{2}\b/g, ' '));
+  if (/\b(add|record|enter|log|put|upload|book|spent|paid|pay)\b/.test(t) && (/\d/.test(input.replace(/(?:project|job)\s*#?\s*[\w-]*\d[\w-]*/ig, '')) || /upload|receipt|bill/.test(t))) {
+    const clean = input.replace(/(?:project|job)\s*#?\s*[\w-]*\d[\w-]*/ig, ' ').replace(job?.code ? new RegExp(job.code.replace(/[-]/g, '\\-'), 'ig') : /$^/, ' ').replace(/\b(19|20)\d{2}-\d{2}-\d{2}\b/g, ' ');
+    // "OMR 150", "150 RO", "= 150", or else the one plain number in the sentence ("add 25.500 fuel")
+    const plain = clean.replace(/,(?=\d{3}\b)/g, '').match(/(?:^|\s)(\d+(?:\.\d{1,3})?)(?=\s|$)/g);
+    const amount = parseAmount(clean) ?? (plain?.length === 1 ? Number(plain[0]) : undefined);
     const income = /\b(received|income|collected|got paid)\b/.test(t);
     const cats = income ? s.incomeCategories : expenseCats(s);
     const category = income ? (cats.find((c) => /job|project/i.test(c)) || cats[0]) : guessCategory(input, cats);

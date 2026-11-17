@@ -3,6 +3,7 @@
  * Every function either does the whole correction or refuses with a reason (returned as a string),
  * so nothing is left half-reversed.
  */
+import { moveStock } from './stock';
 import { store, nextNumber, today } from './store';
 import { docTotals, invoiceBalance, returnAmount } from './calc';
 import type { Advance, Cheque, CreditNote, Customer, Invoice, Receipt, Sale, SaleReturn, Txn } from './types';
@@ -130,7 +131,7 @@ export function returnSale(x: Sale, lines: { itemId: string; qty: number }[], me
   if (!clean.length) return 'Choose how many of each item come back';
   for (const l of clean) { const sold = x.lines.find((s) => s.itemId === l.itemId)?.qty || 0; if (l.qty > sold - done(l.itemId)) return 'You cannot return more than was sold'; }
   const amount = round(returnAmount(x, clean));
-  for (const l of clean) { const it = db().items.find((i) => i.id === l.itemId); if (it) store.upsert('items', { ...it, qty: it.qty + l.qty }); }
+  for (const l of clean) if (db().items.some((i) => i.id === l.itemId)) moveStock(db(), { date: today(), itemId: l.itemId, kind: 'saleReturn', qty: l.qty, saleId: x.id, note: `Return on ${x.number}${reason ? ' — ' + reason : ''}` });
   const ret: SaleReturn = { id: uid(), date: today(), lines: clean, amount, method, reason };
   store.upsert('sales', { ...x, returns: [...(x.returns || []), ret] });
   store.upsert('txns', { date: today(), kind: 'expense', category: 'Sales Return', amount, method, description: `Return on ${x.number}${reason ? ' — ' + reason : ''}`, ref: `${x.number}-R${(x.returns || []).length + 1}` });

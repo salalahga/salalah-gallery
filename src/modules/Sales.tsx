@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Minus, Plus, Trash2, ShoppingCart, Printer, Package, TrendingUp, Undo2 } from 'lucide-react';
 import { returnSale } from '../core/ledger';
+import { moveStock } from '../core/stock';
 import { store, useDB, nextNumber, today } from '../core/store';
 import type { Sale } from '../core/types';
 import { money, fmtDate, saleTotals, returnAmount } from '../core/calc';
@@ -30,7 +31,7 @@ export default function Sales() {
     if (short) return toast(`Only ${L.item(short.itemId)?.qty ?? 0} of ${short.name} in stock`);
     if (discount < 0 || discount > sub) return toast('Discount must be between 0 and the subtotal');
     const sale = store.upsert('sales', { number: nextNumber('SL', db.sales.map((x) => x.number)), date: today(), customerId: customerId || undefined, lines: cart, discount, vat: s.vatRate, method }) as Sale;
-    cart.forEach((l) => { const it = L.item(l.itemId); if (it) store.upsert('items', { ...it, qty: it.qty - l.qty }); });
+    cart.forEach((l) => { if (L.item(l.itemId)) moveStock(store.get(), { date: today(), itemId: l.itemId, kind: 'sale', qty: l.qty, saleId: sale.id, note: sale.number }); });
     store.upsert('txns', { date: today(), kind: 'income', category: 'Product Sale', amount: +total.toFixed(3), method, description: `Sale ${sale.number}${customerId ? ' — ' + L.customer(customerId)?.name : ''}`, ref: sale.number });
     setCart([]); setDiscount(0); setReceipt(sale); toast('Sale completed');
   };

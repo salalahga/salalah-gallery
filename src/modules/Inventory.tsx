@@ -11,7 +11,7 @@ import { useCanWrite, useUser } from '../core/session';
 import { ExportButtons } from '../components/Export';
 
 type Tab = 'material' | 'product' | 'moves' | 'usage' | 'value' | 'low';
-const MOVE_TONE: Record<StockMove['kind'], string> = { in: 'green', out: 'blue', transfer: 'gray', waste: 'red', adjust: 'amber', return: 'amber' };
+const MOVE_TONE: Record<StockMove['kind'], string> = { in: 'green', out: 'blue', transfer: 'gray', waste: 'red', adjust: 'amber', return: 'amber', sale: 'blue', saleReturn: 'green' };
 
 export default function Inventory() {
   const db = useDB(); const s = db.settings; const t = useT(); const can = useCanWrite()('items'); const user = useUser(); const L = lookup(db);
@@ -74,7 +74,7 @@ export default function Inventory() {
           rows={moves.map((m) => { const it = L.item(m.itemId); return [m.date, it?.name || '', MOVE_LABEL[m.kind], m.qty, it?.unit || '', +(m.qty * (Number(m.cost) || 0)).toFixed(3), L.job(m.jobId)?.code || '', m.from || '', m.to || '', m.note || '', m.by || '']; })} /></div>
         {moves.length ? <div className="table-wrap"><table><thead><tr><th>Date</th><th>Item</th><th>Type</th><th className="num">Qty</th><th className="num">Value</th><th>Project / place</th><th>Note</th></tr></thead>
           <tbody>{moves.map((m) => { const it = L.item(m.itemId); return <tr key={m.id}><td>{fmtDate(m.date)}</td><td><b>{it?.name || '—'}</b> <span className="muted">{it?.thickness}</span></td><td><Badge tone={MOVE_TONE[m.kind]}>{MOVE_LABEL[m.kind]}</Badge></td>
-            <td className="num">{['out', 'waste', 'return'].includes(m.kind) ? '−' : m.kind === 'in' ? '+' : ''}{m.qty} {it?.unit}</td><td className="num">{money(m.qty * (Number(m.cost) || 0), s)}</td>
+            <td className="num">{['out', 'waste', 'return', 'sale'].includes(m.kind) ? '−' : ['in', 'saleReturn'].includes(m.kind) ? '+' : ''}{m.qty} {it?.unit}</td><td className="num">{money(m.qty * (Number(m.cost) || 0), s)}</td>
             <td>{m.jobId ? <><span className="code-tag">{L.job(m.jobId)?.code}</span> {L.job(m.jobId)?.title}</> : m.kind === 'transfer' ? `${m.from} → ${m.to}` : m.to || m.from || ''}</td><td className="muted">{m.note}{m.by ? ` · ${m.by}` : ''}</td></tr>; })}</tbody></table></div>
           : <Empty title="No movements in this period" hint="Stock in, issues to projects, transfers, wastage and counts are listed here." />}
       </div>}

@@ -5,7 +5,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import fs from 'node:fs';
 import { openDb, UPSERT, KV_SET } from './db.js';
-import { hashPassword, verifyPassword, signToken, readToken, readTokenFull, cookieMaxAge, loginAllowed, loginFailed, loginOk } from './auth.js';
+import { hashPassword, verifyPassword, signToken, readTokenFull, cookieMaxAge, loginAllowed, loginFailed, loginOk } from './auth.js';
 import { COLLECTIONS, isCollection, canRead, canWrite, canDelete, redact, mergeProtected, VIEWER_MODULES } from './permissions.js';
 import { createPlugins } from './plugins.js';
 import { createAutomations, DEFAULT_RULES } from './automations.js';

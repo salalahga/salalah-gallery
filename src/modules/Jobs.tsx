@@ -15,6 +15,7 @@ import { ProjectMoney } from '../components/ProjectMoney';
 import { projectFinance } from '../core/calc';
 import { Wallet, ClipboardList } from 'lucide-react';
 import { useRoute, go } from '../core/router';
+import { moveStock } from '../core/stock';
 import type { Job, JobStatus } from '../core/types';
 import { money, fmtDate, docTotals } from '../core/calc';
 import { statusMeta, lookup, dueLabel, priorityTone, waLink } from '../core/helpers';
@@ -135,10 +136,12 @@ function JobForm({ job, setJob, onSave, onClose, readOnly }: { job: Partial<Job>
 
   const issueMaterials = () => {
     let cost = 0;
+    const short = materials.map((m) => ({ m, it: L.item(m.itemId), pending: Math.max(0, (Number(m.qty) || 0) - (Number(m.issued) || 0)) })).find((x) => x.it && x.pending > x.it.qty + 1e-9);
+    if (short) return toast(`Only ${short.it!.qty} ${short.it!.unit} of ${short.it!.name} in stock — ${short.pending} needed`);
     const next = materials.map((m) => {
       const pending = Math.max(0, (Number(m.qty) || 0) - (Number(m.issued) || 0));
       const it = L.item(m.itemId);
-      if (it && pending) { store.upsert('items', { ...it, qty: it.qty - pending }); cost += pending * it.cost; }
+      if (it && pending) { const err = moveStock(store.get(), { date: today(), itemId: it.id, kind: 'out', qty: pending, jobId: job.id, note: `Issued from ${job.code}` }, undefined, { skipJob: true }); if (!err) cost += pending * it.cost; else { toast(err); return m; } }
       return { ...m, issued: Math.max(Number(m.issued) || 0, Number(m.qty) || 0) };
     });
     if (!cost) return toast('Everything on this list is already issued');
