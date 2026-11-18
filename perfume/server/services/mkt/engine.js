@@ -41,10 +41,20 @@ export async function saveMktSettings(q, patch) {
   await q(`INSERT INTO settings (key, value, updated_at) VALUES ('marketing', $1, now()) ON CONFLICT (key) DO UPDATE SET value = excluded.value, updated_at = now()`, [next]);
   return next;
 }
+/** The address the visitor used: the proxy's forwarded host, not the server's internal one. */
+export const originOf = (req) => {
+  const proto = String(req.get('x-forwarded-proto') || req.protocol).split(',')[0].trim();
+  const host = String(req.get('x-forwarded-host') || req.get('host') || '').split(',')[0].trim();
+  return `${proto}://${host}`;
+};
+/** Only a real https domain works for links other services fetch (no IPs, localhost or ports). */
+export const isPublicOrigin = (u) => /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/i.test(String(u || ''));
+
 async function publicUrl(q) {
   const s = await mktSettings(q);
-  const u = (s.publicUrl || process.env.PUBLIC_URL || '').replace(/\/+$/, '');
-  must(/^https:\/\//.test(u), 412, 'The public web address of this app is unknown. Open Marketing → Connections once (it is saved automatically) or set PUBLIC_URL.');
+  const env = (process.env.PUBLIC_URL || '').replace(/\/+$/, '');
+  const u = isPublicOrigin(env) ? env : isPublicOrigin(s.publicUrl) ? s.publicUrl : '';
+  must(u, 412, 'The public web address of this app is unknown. Open Marketing → Connections once (it is saved automatically) or set PUBLIC_URL.');
   return u;
 }
 const fileUrl = async (q, fileId) => `${await publicUrl(q)}/api/files/${fileId}`;

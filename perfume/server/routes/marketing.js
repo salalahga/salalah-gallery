@@ -15,7 +15,7 @@ const MEDIA = /^(image\/(jpeg|png|webp)|video\/(mp4|quicktime)|audio\/(mpeg|mp4|
 export function mountPublic(api, { db, wrap, deps }) {
   const q = db.query;
   api.get('/t.js', (req, res) => {
-    const origin = `${req.protocol}://${req.get('host')}`;
+    const origin = E.originOf(req);
     res.type('application/javascript').set('Cache-Control', 'public, max-age=3600').send(`(function(){try{var k='ba_vid',v=localStorage.getItem(k);if(!v){v=Math.random().toString(36).slice(2)+Date.now().toString(36);localStorage.setItem(k,v)}
 var u=new URL(location.href),utm=u.searchParams.get('utm_campaign')||'',m=document.querySelector('meta[name="product-id"]'),p=m?m.content:(location.pathname.match(/\\/products?\\/([^\\/?#]+)/)||[])[1]||'';
 function s(kind){navigator.sendBeacon&&navigator.sendBeacon('${origin}/api/t',new Blob([JSON.stringify({kind:kind,path:location.pathname,product:p,visitor:v,utm:utm,ref:document.referrer})],{type:'text/plain'}))}
@@ -59,9 +59,8 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
   };
   // remember this app's public address (media links for Instagram/WhatsApp must be absolute https URLs)
   const rememberUrl = async (req) => {
-    const proto = req.get('x-forwarded-proto') || req.protocol;
-    const url = `${proto}://${req.get('host')}`;
-    if (/^https:\/\//.test(url) && !/localhost|127\.0\.0\.1/.test(url)) {
+    const url = E.originOf(req);
+    if (E.isPublicOrigin(url)) {
       const s = await E.mktSettings(q);
       if (s.publicUrl !== url) await E.saveMktSettings(q, { publicUrl: url });
     }

@@ -320,3 +320,12 @@ test('old belleameoman.com catalogue imports once with exact prices, photos and 
     assert.equal((await fetch(base + '/marketing/import/legacy-job', { method: 'POST', headers: { 'x-cron-key': 'wrong' } })).status, 401);
   } finally { delete process.env.LEGACY_IMG_BASE; }
 });
+
+test('internal server addresses are never used for media links', async () => {
+  const { isPublicOrigin, originOf } = await import('../server/services/mkt/engine.js');
+  assert.equal(isPublicOrigin('https://10.4.0.215:3001'), false);
+  assert.equal(isPublicOrigin('https://localhost'), false);
+  assert.equal(isPublicOrigin('https://belleame.ample.run'), true);
+  const req = { protocol: 'http', get: (h) => ({ 'x-forwarded-proto': 'https', 'x-forwarded-host': 'belleame.ample.run', host: '10.4.0.215:3001' })[h] };
+  assert.equal(originOf(req), 'https://belleame.ample.run');
+});
