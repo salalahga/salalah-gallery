@@ -11,6 +11,7 @@ import HR from './HR';
 import Users from './Users';
 import Settings from './Settings';
 import Barcodes from './Barcodes';
+import Marketing from './marketing/Marketing';
 import { Assistant, Approvals, Reports, Audit, Account } from './Misc';
 
 export type ModuleDef = { route: string; label: string; icon: string; section: string; need?: [string, string][]; component: ComponentType<any> };
@@ -24,6 +25,7 @@ export const MODULES: ModuleDef[] = [
   { route: 'sales', label: 'Sales & orders', icon: 'sales', section: 'Selling', need: [['sales', 'view'], ['pos', 'view']], component: Sales },
   { route: 'customers', label: 'Customers', icon: 'customers', section: 'Selling', need: [['customers', 'view']], component: Customers },
   { route: 'promotions', label: 'Promotions', icon: 'promotions', section: 'Selling', need: [['promotions', 'view']], component: Promotions },
+  { route: 'marketing', label: 'Marketing', icon: 'megaphone', section: 'Selling', need: [['marketing', 'view'], ['website', 'view'], ['marketing', 'create']], component: Marketing },
   { route: 'inventory', label: 'Inventory', icon: 'inventory', section: 'Stock', need: [['inventory', 'view']], component: Inventory },
   { route: 'barcodes', label: 'Barcodes & labels', icon: 'barcode', section: 'Stock', need: [['barcodes', 'view'], ['barcodes', 'create'], ['inventory', 'view']], component: Barcodes },
   { route: 'purchases', label: 'Purchases', icon: 'purchases', section: 'Stock', need: [['purchases', 'view']], component: Purchases },

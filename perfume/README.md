@@ -129,6 +129,35 @@ ALLOWED_ORIGINS=https://your-shop.example node agent/print-agent.js   # if the a
 ```
 Enter the pairing code in Barcodes → Printers → “Print agent on this computer”. Windows USB/Bluetooth printers: share the printer (e.g. `LABEL`) and use that share name. Mac/Linux: use the CUPS queue name.
 
+## 5c. Marketing, website CMS & social automation (`#/marketing`)
+
+**Screens:** Dashboard · Daily upload · Content & approvals · Calendar (+ daily automation) · Image & video studio · Campaigns · Website & SEO · AI assistant · Performance · Connections (tests, logs, usage, scheduler).
+
+**Flow:** Daily upload creates a real catalogue product (photos, sizes, prices, auto SKU/barcode; stock still comes through Purchases) → AI prepares website text, Instagram post, Story, Reel, Facebook post and WhatsApp message → everything waits as *AI generated / Under review* → the owner (Marketing → approve) approves, schedules or publishes. The `marketing` role prepares content but cannot approve or publish unless the owner grants it. Auto-publishing is off by default and can be switched on per content type.
+
+**Product identity:** creatives place the *original* product photo on a background (optionally background removed with remove.bg, optionally an AI-generated empty backdrop). The bottle, label, logo and packaging are never redrawn. Prices and text are rendered by the app, never by AI image/video models. Fonts for English, Arabic and Malayalam are bundled (`server/assets/fonts`, SIL OFL).
+
+**Video:** luxury showcase videos are rendered on the server with ffmpeg (9:16, 1:1, 4:5, 16:9; H.264 + AAC as Instagram requires), optional licensed music upload and OpenAI voiceover. Optional Runway image-to-video clip, followed by exact price/CTA scenes.
+
+**Integrations (official APIs only; credentials encrypted; each call logged with duration and estimated cost):**
+
+| Service | Used for | Status |
+|---|---|---|
+| Claude (`claude-opus-5-5`) | copy in EN/AR/ML, SEO, assistant with tools over live ERP data | code + tests against a recording fake server; live key not yet connected |
+| Instagram Graph API | posts, Reels (`REELS`), Stories (`STORIES`), followers/reach | same — needs Instagram professional account linked to a Facebook Page + Meta app permissions |
+| Facebook Pages API | photo/video/text posts | same |
+| WhatsApp Cloud API | approved templates to customers with marketing consent only, throttled | same — needs WhatsApp Business API number |
+| Shopify Admin API / WooCommerce REST | products with sizes, prices, compare-at, SKU, barcode, images; blog; landing pages; offer prices | same — platform not yet chosen |
+| remove.bg, OpenAI images & TTS, Runway | optional creative services | same |
+
+Banners and homepage sliders belong to the website theme and are not changeable through the Shopify/WooCommerce APIs; the app makes the image and says so instead of pretending to publish. Search-indexing status needs Google Search Console (not connected).
+
+**Scheduler:** runs every minute in-process; for hosts that sleep when idle, call `POST /api/marketing/cron` with header `x-cron-key` (key created in Connections or env `MKT_CRON_KEY`). Failed scheduled posts retry up to 3 times, then notify the owner.
+
+**Website analytics:** paste `<script async src="https://<app>/api/t.js"></script>` into the site theme (random visitor ID, no personal data). Campaign sales are computed from real ERP orders that used the campaign's promotion or coupon within its dates — never copied into finance.
+
+Env: `PUBLIC_URL` (optional; otherwise remembered from the browser address), `MKT_CRON_KEY`, `META_GRAPH_BASE` (tests only).
+
 ## 6. Integration plan (Phase 2 / 3)
 
 The **Settings → Integrations** screen shows the honest status of each integration.

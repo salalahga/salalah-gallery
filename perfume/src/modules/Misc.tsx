@@ -92,7 +92,7 @@ export function Audit() {
       <PageHead title={t('Audit log')} sub="Who did what and when. Entries cannot be edited or deleted." actions={<button className="btn" onClick={() => download('/export/audit' + qs(f))}>CSV</button>} />
       <div className="card row" style={{ marginBottom: 10 }}>
         <input type="date" value={f.from} onChange={(e) => setF({ ...f, from: e.target.value })} style={{ width: 'auto' }} /><input type="date" value={f.to} onChange={(e) => setF({ ...f, to: e.target.value })} style={{ width: 'auto' }} />
-        <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} style={{ width: 'auto' }}><option value="">Any role</option>{['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff'].map((r) => <option key={r}>{r}</option>)}</select>
+        <select value={f.role} onChange={(e) => setF({ ...f, role: e.target.value })} style={{ width: 'auto' }}><option value="">Any role</option>{['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff', 'marketing'].map((r) => <option key={r}>{r}</option>)}</select>
         <select value={f.app} onChange={(e) => setF({ ...f, app: e.target.value })} style={{ width: 'auto' }}><option value="">Any app</option><option value="admin">Main app</option><option value="manager">Manager app</option><option value="staff">Staff app</option></select>
       </div>
       <div className="card tablewrap">{!data ? <Loading /> : !data.length ? <Empty>No activity</Empty> : (

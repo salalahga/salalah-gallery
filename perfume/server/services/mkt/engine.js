@@ -470,6 +470,11 @@ export async function publish(q, contentId, { user, can, auto = false } = {}) {
     await q("UPDATE mkt_content SET status = 'published', published_at = now(), external_id = $2, external_url = $3, error = NULL, updated_at = now() WHERE id = $1", [c.id, r.externalId || null, r.url || null]);
     await history(q, c.id, 'published', c.status, 'published', user, r.url || r.externalId);
   } catch (e) {
+    if (!auto && e.status && [400, 403, 409, 412].includes(e.status)) {
+      // nothing was sent: a missing connection or setting is not a publishing failure — keep the status
+      await q('UPDATE mkt_content SET attempts = attempts - 1, error = $2 WHERE id = $1', [c.id, e.message]);
+      throw e;
+    }
     const fresh = await q.one('SELECT attempts FROM mkt_content WHERE id = $1', [c.id]);
     const retry = auto && fresh.attempts < 3 && !(e.status && [400, 403, 409, 412].includes(e.status));
     await q(`UPDATE mkt_content SET status = $2, error = $3, scheduled_at = CASE WHEN $2 = 'scheduled' THEN now() + ($4 || ' minutes')::interval ELSE scheduled_at END, updated_at = now() WHERE id = $1`,

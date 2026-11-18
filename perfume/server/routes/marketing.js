@@ -32,9 +32,9 @@ s('pageview');if(p)s('product_view')}catch(e){}})();`);
   }));
   // Scheduler heartbeat for hosts that sleep when idle (called by a scheduled job with the cron key).
   api.post('/marketing/cron', wrap(async (req, res) => {
-    const key = (await E.mktSettings(q)).cronKey;
     const given = String(req.get('x-cron-key') || '');
-    must(key && given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key)), 401, 'Wrong key');
+    const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY].filter(Boolean);
+    must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
     res.json(await E.tick(db));
   }));
 }
@@ -60,6 +60,10 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
   api.get('/marketing/overview', needAny(['marketing', 'view'], ['website', 'view']), wrap(async (req, res) => {
     await rememberUrl(req);
     res.json(await E.dashboard(q, range(req)));
+  }));
+  api.get('/marketing/channels', need('marketing', 'view'), wrap(async (req, res) => {
+    const { from, to } = range(req);
+    res.json(await q(`SELECT channel, COUNT(*)::int AS orders, COALESCE(SUM(total - refunded),0)::bigint AS revenue FROM sales WHERE status NOT IN ('pending','cancelled') AND created_at::date BETWEEN $1 AND $2 GROUP BY channel ORDER BY 3 DESC`, [from, to]));
   }));
   api.post('/marketing/metrics/sync', need('marketing', 'view'), wrap(async (_req, res) => res.json(await E.syncMetrics(q))));
 
@@ -182,7 +186,7 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
     await audit(req, 'marketing_product_created', 'products', out, { name: b.name });
     let pack = null;
     if (b.generate) {
-      try { pack = await E.buildPackage(q, { productId: out, kinds: b.kinds, lang: b.lang || 'en', tone: b.tone, badge: b.badge, promo: b.promo, extra: b.features, campaignId: b.campaignId, user: req.user }); }
+      try { pack = await E.buildPackage(q, { productId: out, kinds: b.kinds, lang: b.lang || 'en', tone: b.tone, badge: b.badge, promo: b.promo, extra: b.features, campaignId: b.campaignId, user: req.user }); E.tick(db).catch(() => {}); }
       catch (e) { pack = { error: e.message }; }
     }
     res.json({ id: out, package: pack });
@@ -197,6 +201,7 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
     const b = req.body || {};
     const r = await E.buildPackage(q, { productId: b.productId, kinds: b.kinds, lang: b.lang, tone: b.tone, badge: b.badge, promo: b.promo, extra: b.extra, theme: b.theme, campaignId: b.campaignId, user: req.user });
     await audit(req, 'marketing_package', 'products', b.productId, { kinds: b.kinds, created: r.created.length });
+    E.tick(db).catch(() => {}); // render videos right away
     res.json(r);
   }));
 

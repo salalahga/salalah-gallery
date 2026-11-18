@@ -120,7 +120,7 @@ function Branches() {
 function Security({ s, reload }: { s: any; reload: () => void }) {
   const [sec, setSec] = useState(s.security);
   const { busy, run } = useAction();
-  const roles = ['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff'];
+  const roles = ['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff', 'marketing'];
   return (
     <Card title="Security (owner only)">
       <div className="col">

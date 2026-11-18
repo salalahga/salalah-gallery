@@ -82,7 +82,7 @@ export const Loading = () => <div className="skel" role="status" aria-label="Loa
 const STATUS_TONE: Record<string, string> = {
   completed: 'ok', paid: 'ok', approved: 'ok', active: 'ok', received: 'ok', delivered: 'ok', fulfilled: 'ok', executed: 'ok', posted: 'ok', present: 'ok', open: 'info',
   pending: 'warn', pending_approval: 'warn', partial: 'warn', partially_received: 'warn', partially_paid: 'warn', partially_refunded: 'warn', draft: '', confirmed: 'info', scheduled: 'info', unfulfilled: 'warn', shipped: 'info', packed: 'info',
-  cancelled: 'bad', refunded: 'bad', rejected: 'bad', unpaid: 'bad', disabled: 'bad', expired: 'bad', failed: 'bad', void: 'bad', reversed: 'bad', absent: 'bad', closed: '',
+  published: 'ok', ai_generated: 'info', under_review: 'warn', archived: '', cancelled: 'bad', refunded: 'bad', rejected: 'bad', unpaid: 'bad', disabled: 'bad', expired: 'bad', failed: 'bad', void: 'bad', reversed: 'bad', absent: 'bad', closed: '',
 };
 export const Status = ({ s }: { s?: string | null }) => (s ? <span className={'badge ' + (STATUS_TONE[s] ?? '')}>{s.replace(/_/g, ' ')}</span> : null);
 export const TestBadge = ({ on }: { on?: boolean }) => (on ? <span className="badge test" title="Sample data for testing — not a real transaction">TEST</span> : null);

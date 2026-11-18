@@ -102,7 +102,12 @@ test('daily upload creates a real catalogue product with photos and sizes; templ
 });
 
 test('reel video is rendered in the background as H.264 9:16 and attached to the content', async () => {
-  for (let i = 0; i < 3; i++) await tick(db);
+  for (let i = 0; i < 60; i++) {
+    await tick(db);
+    const r = await db.one("SELECT COUNT(*)::int AS n FROM mkt_assets WHERE product_id = $1 AND kind = 'video' AND status = 'ready'", [productId]);
+    if (r.n) break;
+    await new Promise((res) => setTimeout(res, 500));
+  }
   const reel = await db.one("SELECT * FROM mkt_content WHERE product_id = $1 AND kind = 'reel'", [productId]);
   const vid = await db.one("SELECT a.*, f.size, f.mime FROM mkt_assets a JOIN files f ON f.id = a.file_id WHERE a.id = ANY($1) AND a.kind = 'video'", [reel.asset_ids]);
   assert.equal(vid.status, 'ready');
@@ -230,6 +235,19 @@ test('Shopify: website product is created with ERP sizes, prices, compare-at pri
   assert.match(p.images[0].src, /^https:\/\/shop\.test\/api\/files\//);
   assert.equal((await db.one('SELECT web_external_id FROM products WHERE id = $1', [productId])).web_external_id, '987');
   assert.equal(r.data.external_url, `${fakeBase}/products/dior-sauvage-edp`);
+});
+
+test('Publish now without a connection keeps the item approved (nothing was sent)', async () => {
+  await db.query("UPDATE settings SET value = value - 'facebook' WHERE key = 'integrations'");
+  const r = await owner.post('/marketing/content', { kind: 'facebook', title: 'FB text post', caption: 'Hello' });
+  await owner.post(`/marketing/content/${r.data.id}/approve`);
+  await db.query("UPDATE settings SET value = jsonb_set(value, '{meta,accessToken}', 'null') WHERE key = 'integrations'");
+  const p = await owner.post(`/marketing/content/${r.data.id}/publish`);
+  assert.equal(p.status, 412);
+  const row = await db.one('SELECT status, error FROM mkt_content WHERE id = $1', [r.data.id]);
+  assert.equal(row.status, 'approved');
+  assert.match(row.error, /not connected/);
+  await owner.put('/marketing/connections/meta', { accessToken: 'EAAB-test-token' });
 });
 
 test('website banners cannot be "published" through the API (theme-only) — refused honestly', async () => {

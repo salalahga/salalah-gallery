@@ -4,7 +4,7 @@ import { t } from '../core/i18n';
 import { useSession, date } from '../core/session';
 import { Card, Field, Loading, Modal, PageHead, Status, useAction, useData } from '../components/ui';
 
-const ROLES: [string, string][] = [['admin', 'Admin — everything except owner security'], ['manager', 'Business manager — separate app, owner chooses access'], ['accountant', 'Accountant — finance & payments'], ['hr', 'HR — staff, attendance, payroll'], ['cashier', 'Cashier — POS at their branch'], ['staff', 'Staff — self-service and POS']];
+const ROLES: [string, string][] = [['admin', 'Admin — everything except owner security'], ['manager', 'Business manager — separate app, owner chooses access'], ['accountant', 'Accountant — finance & payments'], ['hr', 'HR — staff, attendance, payroll'], ['cashier', 'Cashier — POS at their branch'], ['staff', 'Staff — self-service and POS'], ['marketing', 'Marketing manager — prepares content; owner approves & publishes']];
 
 export default function Users() {
   const { can, me } = useSession();
