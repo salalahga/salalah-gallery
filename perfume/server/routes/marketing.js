@@ -32,8 +32,9 @@ s('pageview');if(p)s('product_view')}catch(e){}})();`);
   }));
   // Scheduler heartbeat for hosts that sleep when idle (called by a scheduled job with the cron key).
   api.post('/marketing/cron', wrap(async (req, res) => {
-    const given = String(req.get('x-cron-key') || '');
-    const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY].filter(Boolean);
+    // x-cron-key (key from Connections or MKT_CRON_KEY), or the hosting platform's job token
+    const given = String(req.get('x-cron-key') || req.get('ample-job-token') || '');
+    const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN].filter(Boolean);
     must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
     res.json(await E.tick(db));
   }));
