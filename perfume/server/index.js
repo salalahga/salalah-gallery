@@ -37,3 +37,8 @@ if (fs.existsSync(dist)) {
   app.get(/^\/(?!api\/).*/, page('index.html'));
 }
 app.listen(PORT, () => console.log(`Perfume business system on http://localhost:${PORT} (database: ${db.kind})`));
+
+// Marketing scheduler: publishes scheduled posts, renders videos, runs the daily automation.
+// (On hosts that sleep when idle, a scheduled job also calls POST /api/marketing/cron.)
+const { tick } = await import('./services/mkt/engine.js');
+setInterval(() => tick(db).catch((e) => console.error('marketing tick', e.message)), 60_000).unref();

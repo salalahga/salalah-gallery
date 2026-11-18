@@ -17,10 +17,11 @@ import { notify, listFor } from './services/notify.js';
 import { ensureBase } from './seed.js';
 import { internalEan13, cleanScan, detectSymbology, barcodeProblem, SYMBOLOGIES } from '../shared/barcode.js';
 import { BUILTIN_TEMPLATES } from '../shared/labels.js';
+import { mountPublic as mountMarketingPublic, mountPrivate as mountMarketing } from './routes/marketing.js';
 
 const COOKIE = 'pf_session';
-const ROLES = ['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff'];
-const APP_ROLES = { admin: ['owner', 'admin', 'accountant', 'hr', 'cashier', 'staff'], manager: ['owner', 'admin', 'manager'], staff: ROLES };
+const ROLES = ['owner', 'admin', 'manager', 'accountant', 'hr', 'cashier', 'staff', 'marketing'];
+const APP_ROLES = { admin: ['owner', 'admin', 'accountant', 'hr', 'cashier', 'staff', 'marketing'], manager: ['owner', 'admin', 'manager'], staff: ROLES };
 
 export async function createApp(db, { secureCookies = false, setupCode = process.env.SETUP_CODE } = {}) {
   await ensureBase(db);
@@ -229,6 +230,8 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
     res.end(Buffer.from(f.data));
   }));
+
+  mountMarketingPublic(api, { db, wrap });
 
   // ---------- everything below needs a login ----------
   api.use(authed);
@@ -1168,6 +1171,8 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     res.setHeader('Content-Disposition', `attachment; filename="${name}.csv"`);
     res.send('﻿' + toCsv(rows));
   }));
+
+  mountMarketing(api, { db, wrap, need, needAny, audit, saveVariant, productFields });
 
   // ---------- errors ----------
   api.use((req, _res, next) => next(new HttpError(404, `No API route ${req.method} ${req.path}`)));

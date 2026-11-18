@@ -8,7 +8,7 @@ export const MODULES = {
   dashboard: 'Dashboard', pos: 'POS & till', sales: 'Sales & orders', inventory: 'Inventory', purchases: 'Purchases & suppliers',
   promotions: 'Offers & promotions', customers: 'Customers (CRM)', finance: 'Finance & accounting', payments: 'Payments',
   reports: 'Reports & exports', hr: 'HR & payroll', staff: 'Staff, attendance & leave', branches: 'Branches', online: 'Online store',
-  barcodes: 'Barcodes & label printing', whatsapp: 'WhatsApp', marketing: 'Social & campaigns', assistant: 'AI assistant', audit: 'Audit log', users: 'Users & logins', settings: 'Business settings',
+  barcodes: 'Barcodes & label printing', whatsapp: 'WhatsApp', marketing: 'Marketing, social & campaigns', website: 'Website content (CMS)', assistant: 'AI assistant', audit: 'Audit log', users: 'Users & logins', settings: 'Business settings',
 };
 export const MODULE_KEYS = Object.keys(MODULES);
 
@@ -27,6 +27,8 @@ export const ROLE_DEFAULTS = {
   hr: { dashboard: V, hr: ALL, staff: ALL, reports: VX },
   cashier: { pos: VC, customers: VC, inventory: V, promotions: V }, // cashiers see only their own sales
   staff: { pos: VC, customers: VC, inventory: V },
+  // Marketing manager: prepares content and campaigns; approving / publishing is granted by the owner.
+  marketing: { dashboard: V, marketing: VCE, website: VCE, inventory: V, promotions: V, customers: V, assistant: V },
 };
 
 // What a role can never be granted, whatever the owner saves.
@@ -37,6 +39,7 @@ export const ROLE_CEILING = {
   hr: { users: [], settings: [], finance: [], barcodes: [] },
   cashier: { users: [], settings: [], finance: [], hr: [], audit: [], barcodes: ['view', 'create'] },
   staff: { users: [], settings: [], finance: [], hr: [], audit: [], reports: [], barcodes: ['view', 'create'] },
+  marketing: { users: [], settings: [], finance: [], hr: [], payments: [], audit: [], pos: [] },
 };
 
 /** Effective permissions: { module: Set(levels) } */

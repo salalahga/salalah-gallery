@@ -307,3 +307,67 @@ CREATE TABLE IF NOT EXISTS print_job_lines (
   id BIGSERIAL PRIMARY KEY, job_id TEXT NOT NULL REFERENCES print_jobs(id), variant_id TEXT REFERENCES variants(id),
   product_name TEXT, sku TEXT, barcode TEXT, batch_no TEXT, copies INTEGER NOT NULL CHECK (copies > 0));
 CREATE INDEX IF NOT EXISTS print_job_lines_variant ON print_job_lines(variant_id);
+
+-- ---------- digital marketing, website CMS & social automation ----------
+ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check;
+ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ('owner','admin','manager','accountant','hr','cashier','staff','marketing'));
+ALTER TABLE files ADD COLUMN IF NOT EXISTS name TEXT;
+
+CREATE TABLE IF NOT EXISTS mkt_campaigns (
+  id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','paused','ended')),
+  start_date DATE, end_date DATE, product_ids TEXT[] NOT NULL DEFAULT '{}', promotion_id TEXT REFERENCES promotions(id), coupon_code TEXT,
+  discount_text TEXT, audience TEXT, platforms TEXT[] NOT NULL DEFAULT '{}', budget BIGINT NOT NULL DEFAULT 0, spend BIGINT NOT NULL DEFAULT 0,
+  utm TEXT UNIQUE, notes TEXT, created_by TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE sales ADD COLUMN IF NOT EXISTS campaign_id TEXT;
+
+CREATE TABLE IF NOT EXISTS mkt_assets (
+  id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('image','video','audio')), source TEXT NOT NULL, file_id TEXT REFERENCES files(id),
+  product_id TEXT REFERENCES products(id), format TEXT, width INTEGER, height INTEGER, duration_s NUMERIC, title TEXT,
+  status TEXT NOT NULL DEFAULT 'ready' CHECK (status IN ('processing','ready','failed')), provider TEXT, job_ref TEXT, detail TEXT,
+  cost_usd NUMERIC NOT NULL DEFAULT 0, params JSONB, created_by TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS mkt_assets_product ON mkt_assets(product_id);
+
+CREATE TABLE IF NOT EXISTS mkt_content (
+  id TEXT PRIMARY KEY, number TEXT UNIQUE, kind TEXT NOT NULL CHECK (kind IN ('post','reel','story','facebook','whatsapp','web_product','blog','banner','landing','offer')),
+  platform TEXT NOT NULL, title TEXT, caption TEXT, hashtags TEXT, body JSONB NOT NULL DEFAULT '{}', lang TEXT NOT NULL DEFAULT 'en', tone TEXT,
+  product_id TEXT REFERENCES products(id), campaign_id TEXT REFERENCES mkt_campaigns(id), asset_ids TEXT[] NOT NULL DEFAULT '{}',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','ai_generated','under_review','approved','scheduled','published','failed','archived')),
+  scheduled_at TIMESTAMPTZ, published_at TIMESTAMPTZ, external_id TEXT, external_url TEXT, error TEXT, attempts INTEGER NOT NULL DEFAULT 0,
+  auto_generated BOOLEAN NOT NULL DEFAULT false, fingerprint TEXT, review_note TEXT,
+  created_by TEXT, approved_by TEXT, approved_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS mkt_content_status ON mkt_content(status, scheduled_at);
+CREATE INDEX IF NOT EXISTS mkt_content_product ON mkt_content(product_id);
+
+CREATE TABLE IF NOT EXISTS mkt_content_history (
+  id BIGSERIAL PRIMARY KEY, content_id TEXT NOT NULL REFERENCES mkt_content(id), action TEXT NOT NULL, from_status TEXT, to_status TEXT,
+  note TEXT, user_id TEXT, user_name TEXT, at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS mkt_jobs (
+  id TEXT PRIMARY KEY, kind TEXT NOT NULL, ref_id TEXT, payload JSONB NOT NULL DEFAULT '{}', status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','done','failed')),
+  attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 3, run_after TIMESTAMPTZ NOT NULL DEFAULT now(), error TEXT, result JSONB,
+  created_by TEXT, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS mkt_jobs_due ON mkt_jobs(status, run_after);
+
+CREATE TABLE IF NOT EXISTS mkt_api_log (
+  id BIGSERIAL PRIMARY KEY, provider TEXT NOT NULL, operation TEXT NOT NULL, ok BOOLEAN NOT NULL, status INTEGER, ms INTEGER, cost_usd NUMERIC NOT NULL DEFAULT 0,
+  ref_id TEXT, detail TEXT, at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS mkt_api_log_at ON mkt_api_log(at);
+
+CREATE TABLE IF NOT EXISTS mkt_metrics (
+  day DATE NOT NULL, source TEXT NOT NULL, metric TEXT NOT NULL, value NUMERIC NOT NULL, PRIMARY KEY (day, source, metric)
+);
+CREATE TABLE IF NOT EXISTS mkt_web_events (
+  id BIGSERIAL PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT now(), kind TEXT NOT NULL, path TEXT, product_ref TEXT, visitor TEXT, utm TEXT, referrer TEXT
+);
+CREATE INDEX IF NOT EXISTS mkt_web_events_at ON mkt_web_events(at);
+
+ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_title TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_description TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS slug TEXT;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS web_external_id TEXT;
