@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { LogIn, ShieldCheck, Loader2 } from 'lucide-react';
 import { api } from '../core/api';
+import { LangSwitch } from '../components/LangSwitch';
 import { session } from '../core/session';
 import { hasLocalData, localSnapshot, useSettings } from '../core/store';
 import { seed } from '../core/seed';
@@ -19,6 +20,7 @@ function Shell({ children }: { children: React.ReactNode }) {
         <div className="logo big has-img">{s.logoLight || s.logo ? <img src={s.logoLight || s.logo} alt="" /> : null}</div>
         <h1>{s.businessName}</h1>
         <p>Jobs · CNC · Staff · Payroll · Quotations · Accounts · Sales · Social · Website</p>
+        <LangSwitch wide />
       </div>
       <div className="auth-main"><div className="auth-card">{children}</div></div>
     </div>

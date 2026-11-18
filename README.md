@@ -113,6 +113,9 @@ Photos are stored on the server (`/api/files/…`) instead of inside records, so
 - **Reports**: business performance vs previous period, daily/monthly/yearly sales, project P&L, purchases, expenses, VAT, outstanding — all downloadable as Excel or PDF.
 - **Security**: owner password reset with the server setup code, “sign out other devices”, a password change or reset signs the user out everywhere.
 
+## Language
+English by default. The **ع / EN** button (top bar and login screen) switches this device to Arabic: the interface is translated from the dictionaries in `src/core/ar1–ar6.ts` (numbers inside sentences are matched as `#`) and the layout turns right-to-left. Names, codes and amounts stay as typed; printed documents are already English + Arabic and are not changed. To translate a new label, add its English text and Arabic to `ar6.ts`.
+
 ## Logins & online database
 
 The app has a small Node.js server (`server/`) that provides logins and an online database, so every phone and computer sees the same data.

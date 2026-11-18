@@ -4,6 +4,7 @@ import { modulesFor } from './modules/registry';
 import { useRoute, go } from './core/router';
 import { store, useSettings, useSync, useDB } from './core/store';
 import { useT } from './core/i18n';
+import { LangSwitch } from './components/LangSwitch';
 import { session, useSession, useRole, useUser } from './core/session';
 import { api } from './core/api';
 import { Toaster, Modal, Field, Avatar, toast } from './components/ui';
@@ -132,6 +133,7 @@ function Workspace() {
               <button className="btn primary sm"><Plus size={16} /><span className="hide-sm">Quick add</span></button>
               <div className="quick-menu">{quick.map((x) => <button key={x.label} onClick={x.go}>{x.label}</button>)}</div>
             </div>}
+            <LangSwitch />
             <button className="icon-btn" title="Theme" onClick={() => setDark(!dark)}>{dark ? <Sun size={18} /> : <Moon size={18} />}</button>
             <UserMenu />
           </div>
