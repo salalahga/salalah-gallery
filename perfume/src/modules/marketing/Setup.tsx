@@ -83,6 +83,7 @@ const HELP: Record<string, string[]> = {
   whatsapp: ['Promotions to customers who agreed to marketing messages, using templates approved by Meta.', 'Meta Business → WhatsApp Manager: phone number ID, WhatsApp Business Account ID, and a permanent System User token with whatsapp_business_messaging.'],
   website: ['Publish product pages, prices, offers, blog posts and landing pages to your website (belleameoman.com runs WordPress + WooCommerce on Hostinger).', 'WooCommerce (your shop): Platform = WooCommerce, Website address = your shop address. In WordPress go to Users → Profile → Application Passwords, create one named “Belle Âme ERP”, then enter your WordPress username in both “WooCommerce consumer key” and “WordPress user”, and the application password in both “consumer secret” and “WordPress application password”. (WooCommerce REST API keys also work for products.) Shopify: Admin API token and https://yourshop.myshopify.com.'],
 };
+const ORDER = ['website', 'meta', 'anthropic', 'whatsapp', 'removebg', 'openai', 'runway'];
 const LABEL: Record<string, string> = { apiKey: 'API key', pageId: 'Facebook Page ID', accessToken: 'Access token', igUserId: 'Instagram account ID (found automatically)', graphVersion: 'Graph API version (default v23.0)', phoneNumberId: 'Phone number ID', wabaId: 'WhatsApp Business Account ID', platform: 'Platform', url: 'Website address', token: 'Shopify Admin API token', key: 'WooCommerce consumer key — or WordPress username', secret: 'WooCommerce consumer secret — or application password', wpUser: 'WordPress user (blog)', wpAppPassword: 'WordPress application password', currency: 'Currency' };
 
 export function Connections() {
@@ -99,9 +100,9 @@ export function Connections() {
     <div className="col">
       <div className="alert info">A service is shown as working only after a real test call succeeds. Keys are stored encrypted and are never shown again in full.</div>
       <div className="grid g2">
-        {data.providers.map((p: any) => (
+        {[...data.providers].sort((a: any, b: any) => ORDER.indexOf(a.key) - ORDER.indexOf(b.key)).map((p: any) => (
           <Card key={p.key} title={<>{p.name} {p.configured ? (p.lastTest?.ok ? <span className="badge ok">tested ✓</span> : p.lastTest ? <span className="badge bad">test failed</span> : <span className="badge warn">not tested</span>) : <span className="badge">not connected</span>}</>}
-            actions={manage && <>{p.configured && <button className="btn sm" disabled={busy} onClick={() => run(() => api.post(`/marketing/connections/${p.key}/test`)).then((r) => { if (r) { setRes({ ...res, [p.key]: r }); reload(); rl(); } })}>Test connection</button>}<button className="btn sm ghost" onClick={() => setEd({ key: p.key, name: p.name, fields: p.fields, values: { ...(p.values || {}) } })}>{p.configured ? 'Edit' : 'Connect'}</button></>}>
+            actions={manage && <>{p.configured && <button className="btn sm" disabled={busy} onClick={() => run(() => api.post(`/marketing/connections/${p.key}/test`)).then((r) => { if (r) { setRes({ ...res, [p.key]: r }); reload(); rl(); } })}>Test connection</button>}<button className={'btn sm ' + (p.configured ? 'ghost' : 'gold')} onClick={() => setEd({ key: p.key, name: p.name, fields: p.fields, values: { ...(p.values || {}) } })}>{p.configured ? 'Edit' : 'Connect'}</button></>}>
             <div className="small">{HELP[p.key]?.[0]}</div>
             {res[p.key] && <div className={'alert small ' + (res[p.key].ok ? 'ok' : 'bad')} style={{ marginTop: 8 }}>{res[p.key].detail}</div>}
             {!res[p.key] && p.lastTest && <div className="small muted" style={{ marginTop: 6 }}>Last test {dateTime(p.lastTest.at)}: {p.lastTest.detail}</div>}
