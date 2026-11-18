@@ -31,7 +31,7 @@ const dist = path.resolve(here, '..', 'dist');
 if (fs.existsSync(dist)) {
   app.use(express.static(dist, { index: false, maxAge: '1h' }));
   // each application has its own entry page
-  const page = (f) => (_req, res) => res.sendFile(path.join(dist, f));
+  const page = (f) => (_req, res) => { res.set('Cache-Control', 'no-cache'); res.sendFile(path.join(dist, f)); };
   app.get(/^\/manager(\/.*)?$/, page('manager.html'));
   app.get(/^\/staff(\/.*)?$/, page('staff.html'));
   app.get(/^\/(?!api\/).*/, page('index.html'));

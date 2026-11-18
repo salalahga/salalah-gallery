@@ -45,7 +45,9 @@ function barcodeSvg(code: string, sym: string, module: number) {
  * Self-contained HTML print document from the shared layout. Page size = exactly the label stock,
  * so the operating-system driver prints label by label instead of on A4.
  */
-export async function labelHtml(tpl: Template, labels: LabelData[], shop: string, page: PageOpts, preview = false) {
+export async function labelHtml(tpl: Template, labels: LabelData[], shop: string, page: PageOpts, preview?: boolean): Promise<string>;
+export async function labelHtml(tpl: Template, labels: LabelData[], shop: string, page: PageOpts, preview: boolean, inPage: true): Promise<{ pageCss: string; css: string; body: string }>;
+export async function labelHtml(tpl: Template, labels: LabelData[], shop: string, page: PageOpts, preview = false, inPage = false): Promise<any> {
   const qrCache = new Map<string, string>();
   const one = async (it: LabelData) => {
     const parts: string[] = [];
@@ -77,29 +79,48 @@ export async function labelHtml(tpl: Template, labels: LabelData[], shop: string
     for (let i = 0; i < labels.length; i += page.cols) rows.push(`<div class="row" style="width:${pw}mm;height:${H + Math.max(0, page.offsetYMm)}mm;gap:${page.colGapMm}mm;padding:${Math.max(0, page.offsetYMm)}mm 0 0 ${Math.max(0, page.offsetXMm)}mm">${(await Promise.all(labels.slice(i, i + page.cols).map(one))).join('')}</div>`);
     body = rows.join('');
   }
+  const css = (x: string) => `
+* { box-sizing: border-box; }
+${x}.row { display: flex; overflow: hidden; break-after: page; page-break-after: always; } ${x}.row:last-child { break-after: auto; page-break-after: auto; }
+${x}.sheet { display: grid; break-after: page; page-break-after: always; } ${x}.sheet:last-child { break-after: auto; page-break-after: auto; }
+${x}.lbl { position: relative; width: ${W}mm; height: ${H}mm; overflow: hidden; flex: none; }
+${x}.t { position: absolute; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: clip; }
+${x}.b, ${x}.q, ${x}.l { position: absolute; display: flex; align-items: center; justify-content: center; } ${x}.b svg, ${x}.q svg { width: 100%; height: 100%; display: block; } ${x}.l { object-fit: contain; }`;
+  if (inPage) return { pageCss, css: css('#lblprint '), body };
   return `<!doctype html><html><head><meta charset="utf-8"><title>Labels</title><style>
 ${pageCss}
-* { box-sizing: border-box; } html, body { margin: 0; padding: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+html, body { margin: 0; padding: 0; background: #fff; color: #000; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 body { font-family: Arial, Helvetica, sans-serif; }
-.row { display: flex; overflow: hidden; break-after: page; page-break-after: always; } .row:last-child { break-after: auto; page-break-after: auto; }
-.sheet { display: grid; break-after: page; page-break-after: always; } .sheet:last-child { break-after: auto; }
-.lbl { position: relative; width: ${W}mm; height: ${H}mm; overflow: hidden; flex: none; }
-.t { position: absolute; line-height: 1.12; white-space: nowrap; overflow: hidden; text-overflow: clip; }
-.b, .q, .l { position: absolute; display: flex; align-items: center; justify-content: center; } .b svg, .q svg { width: 100%; height: 100%; display: block; } .l { object-fit: contain; }
+${css('')}
 ${preview ? 'body { padding: 10px; background: #efe8dc; } .row, .sheet { background: #fff; margin-bottom: 8px; outline: 1px dashed #b9ab95; } .lbl { outline: 1px dotted #d3c4ad; }' : ''}
 </style></head><body>${body}</body></html>`;
 }
 
-function printViaBrowser(html: string) {
-  const f = document.createElement('iframe');
-  f.setAttribute('aria-hidden', 'true');
-  Object.assign(f.style, { position: 'fixed', right: '0', bottom: '0', width: '0', height: '0', border: '0' });
-  document.body.appendChild(f);
-  const w = f.contentWindow!;
-  w.document.open(); w.document.write(html); w.document.close();
+/**
+ * Print the labels from the page itself, with everything else hidden. (Printing from a hidden
+ * frame is unreliable: iPad/iPhone Safari prints the page *behind* the frame instead.)
+ * The @page rule sizes each sheet to exactly one label row, so nothing comes out on A4.
+ */
+function printViaBrowser(p: { pageCss: string; css: string; body: string }) {
+  document.getElementById('lblprint')?.remove(); document.getElementById('lblprint-css')?.remove();
+  const st = document.createElement('style'); st.id = 'lblprint-css';
+  st.textContent = `${p.pageCss}
+@media screen { #lblprint { display: none; } }
+@media print {
+  html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; height: auto !important; min-height: 0 !important; overflow: visible !important; }
+  body > *:not(#lblprint) { display: none !important; }
+  #lblprint { display: block !important; color: #000; font-family: Arial, Helvetica, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+${p.css}`;
+  const d = document.createElement('div'); d.id = 'lblprint'; d.innerHTML = p.body;
+  document.head.appendChild(st); document.body.appendChild(d);
+  const cleanup = () => { d.remove(); st.remove(); window.removeEventListener('afterprint', cleanup); };
   return new Promise<void>((resolve) => {
-    const go = () => { w.focus(); w.print(); resolve(); setTimeout(() => f.remove(), 3000); };
-    setTimeout(go, 250);
+    setTimeout(() => {
+      window.addEventListener('afterprint', cleanup);
+      window.print(); resolve();
+      setTimeout(cleanup, 120000); // safety net if afterprint never fires
+    }, 200);
   });
 }
 
@@ -119,7 +140,7 @@ const agentTarget = (p: Printer) => (p.connection === 'network' ? { connection: 
  */
 export async function sendLabels(p: Printer | null, tpl: Template, labels: LabelData[], shop: string): Promise<{ status: 'sent' | 'dialog_opened'; detail: string }> {
   if (!p || p.connection === 'browser' || p.language === 'driver') {
-    await printViaBrowser(await labelHtml(tpl, labels, shop, pageOf(p)));
+    await printViaBrowser(await labelHtml(tpl, labels, shop, pageOf(p), false, true));
     return { status: 'dialog_opened', detail: `Browser print window opened${p ? ` for ${p.name}` : ''}` };
   }
   const r = await agent.print(agentTarget(p) as any, printerCommands(p, tpl, labels, shop));
