@@ -44,6 +44,8 @@ function fakeServer() {
       if (b.to.endsWith('0000')) return json({ error: { message: 'Recipient not on WhatsApp' } }, 400);
       return json({ messages: [{ id: 'wamid.1' }] });
     }
+    // old website photo CDN
+    if (p.startsWith('/legacy/')) { res.writeHead(200, { 'content-type': 'image/jpeg' }); return res.end(await sharp({ create: { width: 300, height: 400, channels: 3, background: '#111' } }).jpeg().toBuffer()); }
     // Shopify Admin API
     if (p === '/admin/api/2025-07/shop.json') return json({ shop: { name: 'Belle Ame', currency: 'OMR' } });
     if (p === '/admin/api/2025-07/products.json' && req.method === 'POST') return json({ product: { id: 987, handle: 'dior-sauvage-edp' } });
@@ -301,4 +303,20 @@ test('scheduler heartbeat requires the secret key', async () => {
   const k = await owner.post('/marketing/settings/cron-key');
   const ok = await fetch(base + '/marketing/cron', { method: 'POST', headers: { 'x-cron-key': k.data.key } });
   assert.equal(ok.status, 200);
+});
+
+test('old belleameoman.com catalogue imports once with exact prices, photos and auto barcodes', async () => {
+  process.env.LEGACY_IMG_BASE = fakeBase + '/legacy/';
+  try {
+    const r = await owner.post('/marketing/import/legacy');
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.failed.length, 0, JSON.stringify(r.data.failed));
+    assert.equal(r.data.created.length, 8);
+    const p = await db.query(`SELECT p.name, p.image_url, b.name AS brand, v.retail_price, v.web_price, v.barcode FROM products p LEFT JOIN brands b ON b.id = p.brand_id JOIN variants v ON v.product_id = p.id WHERE p.name IN ('Luxury Edition Magic', 'Sensu', 'Signature Collection Charonne') ORDER BY p.name`);
+    assert.deepEqual(p.map((x) => [x.name, x.brand, x.retail_price, x.web_price]), [['Luxury Edition Magic', 'Linea De Bella', 20000, 20000], ['Sensu', null, 11025, 11025], ['Signature Collection Charonne', 'Charonne', 8400, 8400]]);
+    assert.ok(p.every((x) => /^\/api\/files\//.test(x.image_url) && /^\d{13}$/.test(x.barcode)));
+    const again = await owner.post('/marketing/import/legacy');
+    assert.equal(again.data.created.length, 0); assert.equal(again.data.skipped.length, 8);
+    assert.equal((await fetch(base + '/marketing/import/legacy-job', { method: 'POST', headers: { 'x-cron-key': 'wrong' } })).status, 401);
+  } finally { delete process.env.LEGACY_IMG_BASE; }
 });

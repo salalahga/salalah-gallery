@@ -4,6 +4,7 @@ import crypto from 'node:crypto';
 import { id, fail, must, str, money, today } from '../util.js';
 import { can } from '../rbac.js';
 import * as P from '../services/mkt/providers.js';
+import { importLegacy } from '../services/mkt/legacy.js';
 import * as E from '../services/mkt/engine.js';
 import * as S from '../services/mkt/studio.js';
 import { chat } from '../services/mkt/assistant.js';
@@ -11,7 +12,7 @@ import { chat } from '../services/mkt/assistant.js';
 const MEDIA = /^(image\/(jpeg|png|webp)|video\/(mp4|quicktime)|audio\/(mpeg|mp4|aac|wav|x-wav|x-m4a))$/;
 
 /** Routes that must work without a login: website visit tracking and the scheduler heartbeat. */
-export function mountPublic(api, { db, wrap }) {
+export function mountPublic(api, { db, wrap, deps }) {
   const q = db.query;
   api.get('/t.js', (req, res) => {
     const origin = `${req.protocol}://${req.get('host')}`;
@@ -37,6 +38,15 @@ s('pageview');if(p)s('product_view')}catch(e){}})();`);
     const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN].filter(Boolean);
     must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
     res.json(await E.tick(db));
+  }));
+  // One-time import of the old belleameoman.com catalogue, run by a hosting job (same key check as the cron).
+  api.post('/marketing/import/legacy-job', wrap(async (req, res) => {
+    const given = String(req.get('x-cron-key') || req.get('ample-job-token') || '');
+    const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN].filter(Boolean);
+    must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
+    const r = await importLegacy(db, deps());
+    await q(`INSERT INTO audit_log (action, entity, entity_id, detail, user_name, app) VALUES ('legacy_import', 'products', NULL, $1, 'scheduled job', 'system')`, [JSON.stringify({ created: r.created.length, skipped: r.skipped.length, failed: r.failed })]).catch(() => {});
+    res.json(r);
   }));
 }
 
@@ -191,6 +201,12 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
       catch (e) { pack = { error: e.message }; }
     }
     res.json({ id: out, package: pack });
+  }));
+
+  api.post('/marketing/import/legacy', need('inventory', 'create'), wrap(async (req, res) => {
+    const r = await importLegacy(db, { saveVariant, productFields });
+    await audit(req, 'legacy_import', 'products', null, { created: r.created.length, skipped: r.skipped.length, failed: r.failed });
+    res.json(r);
   }));
 
   // ---------- AI copywriter ----------
