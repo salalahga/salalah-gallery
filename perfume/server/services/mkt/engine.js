@@ -57,7 +57,13 @@ async function publicUrl(q) {
   must(u, 412, 'The public web address of this app is unknown. Open Marketing → Connections once (it is saved automatically) or set PUBLIC_URL.');
   return u;
 }
-const fileUrl = async (q, fileId) => `${await publicUrl(q)}/api/files/${fileId}`;
+const EXT = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif', 'video/mp4': 'mp4', 'video/quicktime': 'mov' };
+/** Absolute public link with a file extension (WordPress and others decide the file type from it). */
+const fileUrl = async (q, fileId) => {
+  const f = await q.one('SELECT mime FROM files WHERE id = $1', [fileId]);
+  const ext = EXT[f?.mime];
+  return `${await publicUrl(q)}/api/files/${fileId}${ext ? '.' + ext : ''}`;
+};
 
 // ---------------------------------------------------------------- products
 export async function productInfo(q, productId) {

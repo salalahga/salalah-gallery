@@ -329,3 +329,9 @@ test('internal server addresses are never used for media links', async () => {
   const req = { protocol: 'http', get: (h) => ({ 'x-forwarded-proto': 'https', 'x-forwarded-host': 'belleame.ample.run', host: '10.4.0.215:3001' })[h] };
   assert.equal(originOf(req), 'https://belleame.ample.run');
 });
+
+test('photo links carry a file extension and still open', async () => {
+  const f = await db.one("SELECT id FROM files WHERE mime = 'image/jpeg' LIMIT 1");
+  const r = await fetch(`${base}/files/${f.id}.jpg`);
+  assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'image/jpeg');
+});

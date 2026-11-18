@@ -224,7 +224,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
 
   // public product photos (storefront)
   api.get('/files/:id', wrap(async (req, res) => {
-    const f = await db.one('SELECT mime, data FROM files WHERE id = $1', [req.params.id]);
+    const f = await db.one('SELECT mime, data FROM files WHERE id = $1', [req.params.id.replace(/\.(jpe?g|png|webp|gif|mp4|mov)$/i, '')]); // links may carry an extension (WordPress needs one)
     if (!f) fail(404, 'Not found');
     res.setHeader('Content-Type', f.mime);
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
