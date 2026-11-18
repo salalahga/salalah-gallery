@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schemas.wp.org/trunk/theme.json",
+  "version": 3,
+  "settings": {
+    "color": {
+      "palette": [
+        { "slug": "base", "color": "#0d0b09", "name": "Noir" },
+        { "slug": "contrast", "color": "#f4ecdc", "name": "Ivory" },
+        { "slug": "accent-1", "color": "#c9a24b", "name": "Gold" },
+        { "slug": "accent-2", "color": "#1a1611", "name": "Deep brown" },
+        { "slug": "accent-3", "color": "#e6c98f", "name": "Champagne" },
+        { "slug": "accent-4", "color": "#b9ab95", "name": "Taupe" },
+        { "slug": "accent-5", "color": "#26201a", "name": "Dark panel" },
+        { "slug": "accent-6", "color": "#e2127a", "name": "Rose" }
+      ]
+    },
+    "typography": {
+      "fontFamilies": [
+        { "slug": "cormorant", "name": "Cormorant Garamond", "fontFamily": "\"Cormorant Garamond\", Georgia, serif",
+          "fontFace": [
+            { "fontFamily": "Cormorant Garamond", "fontWeight": "400", "fontStyle": "normal", "src": ["file:./assets/fonts/CormorantGaramond_400Regular.ttf"] },
+            { "fontFamily": "Cormorant Garamond", "fontWeight": "600", "fontStyle": "normal", "src": ["file:./assets/fonts/CormorantGaramond_600SemiBold.ttf"] } ] },
+        { "slug": "inter", "name": "Inter", "fontFamily": "Inter, system-ui, sans-serif",
+          "fontFace": [
+            { "fontFamily": "Inter", "fontWeight": "500", "fontStyle": "normal", "src": ["file:./assets/fonts/Inter_500Medium.ttf"] },
+            { "fontFamily": "Inter", "fontWeight": "700", "fontStyle": "normal", "src": ["file:./assets/fonts/Inter_700Bold.ttf"] } ] },
+        { "slug": "naskh", "name": "Noto Naskh Arabic", "fontFamily": "\"Noto Naskh Arabic\", serif",
+          "fontFace": [ { "fontFamily": "Noto Naskh Arabic", "fontWeight": "600", "fontStyle": "normal", "src": ["file:./assets/fonts/NotoNaskhArabic_600SemiBold.ttf"] } ] }
+      ]
+    }
+  },
+  "styles": {
+    "color": { "background": "var:preset|color|base", "text": "var:preset|color|contrast" },
+    "typography": { "fontFamily": "var:preset|font-family|inter", "fontSize": "1rem", "lineHeight": "1.6" },
+    "elements": {
+      "heading": { "typography": { "fontFamily": "var:preset|font-family|cormorant", "fontWeight": "600" }, "color": { "text": "var:preset|color|contrast" } },
+      "link": { "color": { "text": "var:preset|color|accent-3" }, ":hover": { "color": { "text": "var:preset|color|accent-1" } } },
+      "button": { "color": { "background": "var:preset|color|accent-1", "text": "var:preset|color|base" }, "border": { "radius": "999px" }, "typography": { "fontWeight": "700", "letterSpacing": "0.04em" },
+        ":hover": { "color": { "background": "var:preset|color|accent-3", "text": "var:preset|color|base" } } }
+    },
+    "blocks": {
+      "core/site-title": { "typography": { "fontFamily": "var:preset|font-family|cormorant", "fontSize": "1.8rem", "letterSpacing": "0.04em" } },
+      "core/navigation": { "typography": { "textTransform": "uppercase", "letterSpacing": "0.12em", "fontSize": "0.8rem" } }
+    }
+  }
+}

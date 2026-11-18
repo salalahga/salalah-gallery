@@ -1,0 +1,14 @@
+/*
+Theme Name: Belle Âme
+Template: twentytwentyfive
+Description: Luxury black and gold theme for Belle Âme perfumes, Salalah. Products, prices and offers are published from the Belle Âme ERP.
+Version: 1.0.0
+Text Domain: belleame
+*/
+.wp-block-woocommerce-product-image img, .wc-block-components-product-image img { border-radius: 14px; background: #f3efe9; }
+.wc-block-components-product-price, .wc-block-grid__product-price, .woocommerce-Price-amount { color: var(--wp--preset--color--accent-1); font-family: var(--wp--preset--font-family--cormorant); font-size: 1.15em; }
+del .woocommerce-Price-amount { color: #8f877a; font-size: .9em; }
+.wc-block-components-product-sale-badge, .onsale { background: var(--wp--preset--color--accent-1) !important; color: #0d0b09 !important; border: 0 !important; border-radius: 999px !important; letter-spacing: .08em; }
+.wp-site-blocks > header { border-bottom: 1px solid rgba(201,162,75,.25); }
+.belleame-hero { background: radial-gradient(ellipse at 50% 40%, #2a2216 0%, #0d0b09 70%); }
+a { text-underline-offset: 3px; }
