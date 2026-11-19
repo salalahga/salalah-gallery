@@ -56,3 +56,33 @@ export async function importLegacy(db, { saveVariant, productFields, fetchImpl =
   }
   return { created, skipped, failed };
 }
+
+/**
+ * Owner-requested: put the imported old-site products on the website through the normal content workflow
+ * (website content → approved by the owner account → published). Products already on the website are skipped.
+ */
+export async function publishLegacy(db, { items = LEGACY_PRODUCTS } = {}) {
+  const q = db.query;
+  const E = await import('./engine.js');
+  const owner = await q.one("SELECT id, name, role FROM users WHERE role = 'owner' AND active ORDER BY created_at LIMIT 1");
+  if (!owner) throw new Error('No owner account');
+  const ctx = { user: owner, can: () => true };
+  const published = []; const skipped = []; const failed = [];
+  for (const it of items) {
+    const p = await q.one('SELECT id, web_external_id FROM products WHERE lower(name) = lower($1) AND active', [it.name]);
+    if (!p) { failed.push({ name: it.name, error: 'not in the catalogue' }); continue; }
+    if (p.web_external_id) { skipped.push(it.name); continue; }
+    try {
+      let c = await q.one(`SELECT id, status FROM mkt_content WHERE product_id = $1 AND kind = 'web_product' AND status NOT IN ('published', 'archived') ORDER BY created_at DESC LIMIT 1`, [p.id]);
+      if (!c) {
+        const r = await E.buildPackage(q, { productId: p.id, kinds: ['web_product'], user: owner });
+        c = await q.one('SELECT id, status FROM mkt_content WHERE id = ANY($1) LIMIT 1', [r.created]);
+        if (!c) c = await q.one(`SELECT id, status FROM mkt_content WHERE product_id = $1 AND kind = 'web_product' AND status NOT IN ('published', 'archived') ORDER BY created_at DESC LIMIT 1`, [p.id]);
+      }
+      if (!['approved', 'scheduled'].includes(c.status)) await E.transition(q, c.id, 'approve', { ...ctx, note: 'Owner asked to move the old website catalogue to the new shop' });
+      const done = await E.publish(q, c.id, ctx);
+      published.push({ name: it.name, url: done.external_url });
+    } catch (e) { failed.push({ name: it.name, error: e.message }); }
+  }
+  return { published, skipped, failed };
+}

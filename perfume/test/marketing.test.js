@@ -335,3 +335,16 @@ test('photo links carry a file extension and still open', async () => {
   const r = await fetch(`${base}/files/${f.id}.jpg`);
   assert.equal(r.status, 200); assert.equal(r.headers.get('content-type'), 'image/jpeg');
 });
+
+test('old-site products go to the website through approval + publish when the owner asks (job endpoint)', async () => {
+  process.env.MKT_CRON_KEY = 'k'.repeat(32);
+  try {
+    const r = await fetch(base + '/marketing/import/legacy-job?publish=1', { method: 'POST', headers: { 'x-cron-key': process.env.MKT_CRON_KEY } });
+    const d = await r.json();
+    assert.equal(r.status, 200, JSON.stringify(d));
+    assert.equal(d.website.failed.length, 0, JSON.stringify(d.website.failed));
+    assert.equal(d.website.published.length + d.website.skipped.length, 8);
+    const c = await db.query("SELECT c.status, c.approved_by FROM mkt_content c JOIN products p ON p.id = c.product_id WHERE p.name = 'Sensu' AND c.kind = 'web_product'");
+    assert.ok(c.some((x) => x.status === 'published' && x.approved_by));
+  } finally { delete process.env.MKT_CRON_KEY; }
+});
