@@ -234,7 +234,9 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
     res.json(r);
   }));
   api.post('/marketing/import/legacy', need('inventory', 'create'), wrap(async (req, res) => {
-    const r = await importLegacy(db, { saveVariant, productFields });
+    const a = await importLegacy(db, { saveVariant, productFields });
+    const g = await importLegacy(db, { saveVariant, productFields, items: GALLERY_PRODUCTS });
+    const r = { created: [...a.created, ...g.created], skipped: [...a.skipped, ...g.skipped], failed: [...a.failed, ...g.failed] };
     await audit(req, 'legacy_import', 'products', null, { created: r.created.length, skipped: r.skipped.length, failed: r.failed });
     res.json(r);
   }));

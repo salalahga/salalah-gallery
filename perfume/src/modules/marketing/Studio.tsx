@@ -213,7 +213,7 @@ function WebProducts({ canEdit }: { canEdit: boolean }) {
   const savePrices = () => run(() => api.put(`/marketing/products/${pr.id}/prices`, { variants: pr.variants.map((v: any) => ({ id: v.id, price: parseMoney(v.price) })) }), 'Price saved — now press “Add to website”').then((r) => { if (r) { setPr(null); reload(); } });
   const prepare = (p: any) => run(() => api.post('/marketing/packages', { productId: p.id, kinds: ['web_product'] }), 'Website content prepared for approval').then((r) => { if (r?.created?.[0]) setOpen(r.created[0]); else if (r) toast('Already prepared today — see Content & approvals'); reload(); });
   return (
-    <Card title="Products on the website" actions={<input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200 }} />}>
+    <Card title="Products on the website" actions={<>{can('inventory', 'create') && <button className="btn sm" disabled={busy} onClick={() => run(() => api.post('/marketing/import/legacy'), '').then((r) => { if (r) { toast(`${r.created.length} products added, ${r.skipped.length} already there${r.failed.length ? `, ${r.failed.length} failed: ${r.failed[0].error}` : ''}`); reload(); } })}>Import old-website & gallery products</button>} <input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200 }} /></>}>
       {!data ? <Loading /> : (
         <div className="tablewrap"><table className="t"><thead><tr><th /><th>Product</th><th>Prices</th><th>SEO</th><th>Website</th><th /></tr></thead>
           <tbody>{data.map((p) => {
