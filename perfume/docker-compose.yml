@@ -42,6 +42,9 @@ services:
     restart: unless-stopped
     depends_on: [app]
     ports: ["80:80", "443:443"]
-    command: caddy reverse-proxy --from ${DOMAIN} --to app:3001
+    # serves DOMAIN (and ALT_DOMAIN if set, e.g. the VPS hostname) with automatic HTTPS certificates
+    environment:
+      SITES: ${DOMAIN}${ALT_DOMAIN:+, ${ALT_DOMAIN}}
+    entrypoint: ["sh", "-c", "printf '%s {\\n  reverse_proxy app:3001\\n}\\n' \"$$SITES\" > /etc/caddy/Caddyfile && exec caddy run --config /etc/caddy/Caddyfile --adapter caddyfile"]
     volumes: [caddydata:/data]
 volumes: { pgdata: {}, appdata: {}, caddydata: {}, src: {} }
