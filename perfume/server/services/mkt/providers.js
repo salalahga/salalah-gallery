@@ -217,6 +217,24 @@ export async function whatsappTemplate(q, { to, template, language, headerImageU
 
 // ---------------------------------------------------------------- Website (Shopify / WooCommerce)
 export const websiteCreds = (q) => need(q, 'website');
+/** WordPress REST login: the blog user, or the WordPress username + application password entered as key/secret. */
+function wpAuth(c) {
+  const user = c.wpUser || (c.key && !/^ck_/.test(c.key) ? c.key : null);
+  const pass = c.wpAppPassword || (c.secret && !/^cs_/.test(c.secret) ? c.secret : null);
+  if (!user || !pass) fail(412, 'Pages, posts and photos on WordPress need a WordPress user and application password (Marketing → Connections → Website).');
+  return 'Basic ' + Buffer.from(`${user}:${pass}`).toString('base64');
+}
+
+/** Upload one file to the WordPress media library. */
+export async function websiteMedia(q, buf, mime, filename, { alt, caption, ref } = {}) {
+  const c = await need(q, 'website');
+  if (c.platform === 'shopify') fail(400, 'The website gallery page is for WordPress / WooCommerce sites');
+  const url = `${c.url.replace(/\/+$/, '')}/wp-json/wp/v2/media`;
+  const m = await call(q, 'website', 'wp_upload_media', url, { method: 'POST', headers: { Authorization: wpAuth(c), 'Content-Type': mime, 'Content-Disposition': `attachment; filename="${filename.replace(/[^\w.-]/g, '-')}"` }, body: buf }, { ref });
+  if (alt || caption) await call(q, 'website', 'wp_update_media', `${url}/${m.id}`, { method: 'POST', headers: { Authorization: wpAuth(c), 'Content-Type': 'application/json' }, body: JSON.stringify({ alt_text: alt || '', caption: caption || '' }) }, { ref });
+  return m;
+}
+
 export async function website(q, operation, method, path, body, ref) {
   const c = await need(q, 'website');
   const base = c.url.replace(/\/+$/, '');
@@ -226,8 +244,7 @@ export async function website(q, operation, method, path, body, ref) {
     headers['X-Shopify-Access-Token'] = c.token;
   } else if (path.startsWith('wp/')) {
     url = `${base}/wp-json/${path}`;
-    if (!c.wpUser || !c.wpAppPassword) fail(412, 'Blog posts on WordPress need a WordPress user and application password (Marketing → Connections → Website).');
-    headers.Authorization = 'Basic ' + Buffer.from(`${c.wpUser}:${c.wpAppPassword}`).toString('base64');
+    headers.Authorization = wpAuth(c);
   } else {
     url = `${base}/wp-json/wc/v3/${path}`;
     headers.Authorization = 'Basic ' + Buffer.from(`${c.key}:${c.secret}`).toString('base64');

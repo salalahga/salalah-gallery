@@ -5,6 +5,7 @@ import { id, fail, must, str, money, today } from '../util.js';
 import { can } from '../rbac.js';
 import * as P from '../services/mkt/providers.js';
 import { importLegacy, publishLegacy } from '../services/mkt/legacy.js';
+import { publishGallery } from '../services/mkt/gallery.js';
 import * as E from '../services/mkt/engine.js';
 import * as S from '../services/mkt/studio.js';
 import { chat } from '../services/mkt/assistant.js';
@@ -38,6 +39,16 @@ s('pageview');if(p)s('product_view')}catch(e){}})();`);
     const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN].filter(Boolean);
     must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
     res.json(await E.tick(db));
+  }));
+  const jobKeyOk = async (req) => {
+    const given = String(req.get('x-cron-key') || req.get('ample-job-token') || '');
+    const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN].filter(Boolean);
+    must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
+  };
+  // Studio gallery → website gallery page, run by a hosting job (same key as the cron)
+  api.post('/marketing/jobs/website-gallery', wrap(async (req, res) => {
+    await jobKeyOk(req);
+    res.json(await publishGallery(db));
   }));
   // One-time import of the old belleameoman.com catalogue, run by a hosting job (same key check as the cron).
   api.post('/marketing/import/legacy-job', wrap(async (req, res) => {
@@ -203,6 +214,11 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
     res.json({ id: out, package: pack });
   }));
 
+  api.post('/marketing/website/gallery', need('marketing', 'approve'), wrap(async (req, res) => {
+    const r = await publishGallery(db);
+    await audit(req, 'website_gallery', 'mkt_assets', null, { total: r.total, uploaded: r.uploaded, failed: r.failed.length });
+    res.json(r);
+  }));
   api.post('/marketing/import/legacy', need('inventory', 'create'), wrap(async (req, res) => {
     const r = await importLegacy(db, { saveVariant, productFields });
     await audit(req, 'legacy_import', 'products', null, { created: r.created.length, skipped: r.skipped.length, failed: r.failed });

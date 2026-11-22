@@ -172,6 +172,7 @@ export function Website() {
           <div className="seg"><button className={tab === 'products' ? 'on' : ''} onClick={() => setTab('products')}>Products & SEO</button><button className={tab === 'pages' ? 'on' : ''} onClick={() => setTab('pages')}>Blog, pages, offers, banners</button><button className={tab === 'tracking' ? 'on' : ''} onClick={() => setTab('tracking')}>Traffic tracking & sitemap</button></div>
         </div>
       </Card>
+      {tab === 'products' && can('marketing', 'approve') && <WebGallery connected={!!st?.connected} />}
       {tab === 'products' && <WebProducts canEdit={can('website', 'edit') || can('marketing', 'edit')} />}
       {tab === 'pages' && <WebPages />}
       {tab === 'tracking' && st && <Card title="Website traffic & search">
@@ -184,6 +185,19 @@ export function Website() {
         </div>
       </Card>}
     </div>
+  );
+}
+
+/** Every finished Studio image → website media library + a "Gallery" page (only new images upload each time). */
+function WebGallery({ connected }: { connected: boolean }) {
+  const { busy, run } = useAction();
+  const [res, setRes] = useState<any>(null);
+  const publishNow = () => run(() => api.post('/marketing/website/gallery'), 'Gallery page updated').then((r) => r && setRes(r));
+  return (
+    <Card title="Website gallery" actions={<button className="btn sm gold" disabled={busy || !connected} onClick={publishNow}>{busy ? 'Uploading…' : 'Publish Studio gallery to website'}</button>}>
+      <div className="small">Puts every finished image from the Studio gallery on the website’s “Gallery” page. Images already on the website are not uploaded again.</div>
+      {res && <div className="small" style={{ marginTop: 8 }}>{res.total} images on the page · {res.uploaded} new{res.failed?.length ? <span className="warn"> · {res.failed.length} could not upload: {res.failed[0].error}</span> : null}{res.url ? <> · <a href={res.url} target="_blank" rel="noreferrer">Open the Gallery page</a></> : null}</div>}
+    </Card>
   );
 }
 

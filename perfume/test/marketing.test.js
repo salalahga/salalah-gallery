@@ -44,6 +44,12 @@ function fakeServer() {
       if (b.to.endsWith('0000')) return json({ error: { message: 'Recipient not on WhatsApp' } }, 400);
       return json({ messages: [{ id: 'wamid.1' }] });
     }
+    // WordPress REST (gallery)
+    if (p === '/wp-json/wp/v2/media' && req.method === 'POST') { const n = seen.filter((x) => x.path === p && x.method === 'POST').length; return json({ id: 500 + n, source_url: `${'https://wp.test'}/m/${500 + n}.jpg` }); }
+    if (/^\/wp-json\/wp\/v2\/media\/\d+$/.test(p)) return json({ ok: true });
+    if (p === '/wp-json/wp/v2/pages' && req.method === 'GET') return json(seen.some((x) => x.path === p && x.method === 'POST') ? [{ id: 77, link: 'https://wp.test/gallery/' }] : []);
+    if (p === '/wp-json/wp/v2/pages' && req.method === 'POST') return json({ id: 77, link: 'https://wp.test/gallery/' });
+    if (p === '/wp-json/wp/v2/pages/77') return json({ id: 77, link: 'https://wp.test/gallery/' });
     // old website photo CDN
     if (p.startsWith('/legacy/')) { res.writeHead(200, { 'content-type': 'image/jpeg' }); return res.end(await sharp({ create: { width: 300, height: 400, channels: 3, background: '#111' } }).jpeg().toBuffer()); }
     // Shopify Admin API
@@ -347,4 +353,22 @@ test('old-site products go to the website through approval + publish when the ow
     const c = await db.query("SELECT c.status, c.approved_by FROM mkt_content c JOIN products p ON p.id = c.product_id WHERE p.name = 'Sensu' AND c.kind = 'web_product'");
     assert.ok(c.some((x) => x.status === 'published' && x.approved_by));
   } finally { delete process.env.MKT_CRON_KEY; }
+});
+
+test('Studio gallery goes to a WordPress "Gallery" page; a second run uploads nothing new', async () => {
+  await owner.put('/marketing/connections/website', { platform: 'woocommerce', url: fakeBase, key: 'shopowner', secret: 'abcd efgh ijkl mnop' });
+  const n = (await db.one("SELECT COUNT(*)::int AS n FROM mkt_assets WHERE kind = 'image' AND status = 'ready' AND source <> 'cutout'")).n;
+  assert.ok(n > 0);
+  const r = await owner.post('/marketing/website/gallery');
+  assert.equal(r.status, 200, JSON.stringify(r.data));
+  assert.equal(r.data.failed.length, 0, JSON.stringify(r.data.failed));
+  assert.equal(r.data.total, n); assert.equal(r.data.uploaded, n);
+  assert.equal(r.data.url, 'https://wp.test/gallery/');
+  const up = seen.filter((x) => x.path === '/wp-json/wp/v2/media' && x.method === 'POST');
+  assert.ok(up[0].headers.authorization.startsWith('Basic ') && /attachment; filename="belleame-/.test(up[0].headers['content-disposition']));
+  const page = seen.filter((x) => x.path === '/wp-json/wp/v2/pages' && x.method === 'POST').pop();
+  assert.match(JSON.parse(page.body).content, /wp:gallery/);
+  const again = await owner.post('/marketing/website/gallery');
+  assert.equal(again.data.uploaded, 0); assert.equal(again.data.total, n);
+  assert.equal((await fetch(base + '/marketing/jobs/website-gallery', { method: 'POST' })).status, 401);
 });
