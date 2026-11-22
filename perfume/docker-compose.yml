@@ -1,0 +1,30 @@
+# Belle Âme ERP on a VPS: app + PostgreSQL + Caddy (automatic HTTPS).
+# Set DOMAIN (e.g. the VPS hostname srvNNNN.hstgr.cloud, or erp.belleameoman.com once its DNS points here)
+# and POSTGRES_PASSWORD in the project's environment variables.
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: belleame
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: belleame
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U belleame"], interval: 5s, retries: 20 }
+  app:
+    build: .
+    restart: unless-stopped
+    depends_on: { db: { condition: service_healthy } }
+    environment:
+      DATABASE_URL: postgres://belleame:${POSTGRES_PASSWORD}@db:5432/belleame
+      DATABASE_SSL: disable
+      PUBLIC_URL: https://${DOMAIN:?set DOMAIN}
+    volumes: [appdata:/data]
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    ports: ["80:80", "443:443"]
+    command: caddy reverse-proxy --from ${DOMAIN} --to app:3001
+    volumes: [caddydata:/data]
+volumes: { pgdata: {}, appdata: {}, caddydata: {} }
