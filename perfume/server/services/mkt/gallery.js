@@ -27,7 +27,10 @@ export async function publishGallery(db) {
     }
     items.push({ id: params.wpMediaId, url: params.wpMediaUrl, label });
   }
-  if (!items.length) return { total: 0, uploaded, failed, url: null };
+  if (!items.length) {
+    const counts = await q('SELECT kind, source, status, COUNT(*)::int AS n FROM mkt_assets GROUP BY 1, 2, 3 ORDER BY 1, 2, 3');
+    return { total: 0, uploaded, failed, url: null, counts };
+  }
   const imgs = items.map((i) => `<!-- wp:image {"id":${Number(i.id)},"sizeSlug":"large","linkDestination":"media"} -->
 <figure class="wp-block-image size-large"><a href="${esc(i.url)}"><img src="${esc(i.url)}" alt="${esc(i.label)}" class="wp-image-${Number(i.id)}"/></a><figcaption class="wp-element-caption">${esc(i.label)}</figcaption></figure>
 <!-- /wp:image -->`).join('\n');
