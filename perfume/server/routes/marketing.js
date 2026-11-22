@@ -4,7 +4,7 @@ import crypto from 'node:crypto';
 import { id, fail, must, str, money, today } from '../util.js';
 import { can } from '../rbac.js';
 import * as P from '../services/mkt/providers.js';
-import { importLegacy, publishLegacy } from '../services/mkt/legacy.js';
+import { importLegacy, publishLegacy, GALLERY_PRODUCTS } from '../services/mkt/legacy.js';
 import { publishGallery } from '../services/mkt/gallery.js';
 import * as E from '../services/mkt/engine.js';
 import * as S from '../services/mkt/studio.js';
@@ -55,7 +55,7 @@ s('pageview');if(p)s('product_view')}catch(e){}})();`);
     const given = String(req.get('x-cron-key') || req.get('ample-job-token') || '');
     const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN].filter(Boolean);
     must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
-    const r = await importLegacy(db, deps());
+    const r = await importLegacy(db, { ...deps(), ...(req.query.set === 'gallery' ? { items: GALLERY_PRODUCTS } : {}) });
     if (String(req.query.publish || '') === '1') r.website = await publishLegacy(db);
     await q(`INSERT INTO audit_log (action, entity, entity_id, detail, user_name, app) VALUES ('legacy_import', 'products', NULL, $1, 'scheduled job', 'system')`, [JSON.stringify({ created: r.created.length, skipped: r.skipped.length, failed: r.failed })]).catch(() => {});
     res.json(r);
@@ -214,6 +214,20 @@ export function mountPrivate(api, { db, wrap, need, needAny, audit, saveVariant,
     res.json({ id: out, package: pack });
   }));
 
+  /** Set the selling price of a product's sizes (products that came in without one, e.g. from the gallery). */
+  api.put('/marketing/products/:id/prices', need('inventory', 'edit'), wrap(async (req, res) => {
+    const list = Array.isArray(req.body?.variants) ? req.body.variants : [];
+    must(list.length, 400, 'Enter a price');
+    await db.tx(async (tq) => {
+      for (const v of list) {
+        const price = money(v.price, 'price'); must(price > 0, 400, 'The price must be more than zero');
+        const r = await tq('UPDATE variants SET retail_price = $3, web_price = NULL WHERE id = $1 AND product_id = $2 RETURNING id', [v.id, req.params.id, price]);
+        must(r.length, 404, 'Product size not found');
+      }
+    });
+    await audit(req, 'product_prices_set', 'products', req.params.id, { variants: list.map((v) => ({ id: v.id, price: v.price })) });
+    res.json({ ok: true });
+  }));
   api.post('/marketing/website/gallery', need('marketing', 'approve'), wrap(async (req, res) => {
     const r = await publishGallery(db);
     await audit(req, 'website_gallery', 'mkt_assets', null, { total: r.total, uploaded: r.uploaded, failed: r.failed.length });

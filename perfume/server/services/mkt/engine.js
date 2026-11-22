@@ -390,6 +390,7 @@ async function webProduct(q, c) {
   for (const u of p.photos) { const m = String(u).match(/\/api\/files\/([\w-]+)/); imgs.push(m ? await fileUrl(q, m[1]) : u); }
   for (const aid of c.asset_ids) { const a = await q.one("SELECT file_id FROM mkt_assets WHERE id = $1 AND kind = 'image' AND status = 'ready'", [aid]); if (a) imgs.push(await fileUrl(q, a.file_id)); }
   const variants = p.variants.filter((v) => v.active);
+  must(variants.length && variants.every((v) => (v.web_price ?? v.retail_price) > 0), 412, `${p.name}: set the price first (Website & SEO → Set price)`);
   const price = (v) => ((v.web_price ?? v.retail_price) / 1000).toFixed(3);
   const html = (b.description_html || (b.description || p.description || '').split(/\n+/).map((x) => `<p>${x.replace(/</g, '&lt;')}</p>`).join(''));
   if (creds.platform === 'shopify') {

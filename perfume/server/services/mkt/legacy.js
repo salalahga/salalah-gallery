@@ -28,11 +28,11 @@ async function brandId(q, name) {
   return bid;
 }
 
-async function photo(q, file, fetchImpl) {
-  const r = await fetchImpl((process.env.LEGACY_IMG_BASE || IMG_DEFAULT) + file);
+async function photo(q, it, fetchImpl) {
+  const r = await fetchImpl(it.url ? (process.env.LEGACY_IMG_BASE ? process.env.LEGACY_IMG_BASE + it.url.split('/').pop() : it.url) : (process.env.LEGACY_IMG_BASE || IMG_DEFAULT) + it.file);
   if (!r.ok) throw new Error(`photo download failed (${r.status})`);
   const buf = await sharp(Buffer.from(await r.arrayBuffer())).rotate().jpeg({ quality: 90 }).toBuffer();
-  return `/api/files/${await saveFile(q, buf, 'image/jpeg', decodeURIComponent(file))}`;
+  return `/api/files/${await saveFile(q, buf, 'image/jpeg', decodeURIComponent(it.file || it.url.split('/').pop()))}`;
 }
 
 /** Creates the old-site products that are not in the catalogue yet (matched by name). Safe to run again. */
@@ -42,13 +42,13 @@ export async function importLegacy(db, { saveVariant, productFields, fetchImpl =
   for (const it of items) {
     if (await q.one('SELECT id FROM products WHERE lower(name) = lower($1) AND active', [it.name])) { skipped.push(it.name); continue; }
     try {
-      const imageUrl = await photo(q, it.file, fetchImpl);
+      const imageUrl = await photo(q, it, fetchImpl);
       const pid = await db.tx(async (tq) => {
         const pid = id('prd_');
-        const b = { name: it.name, brandId: await brandId(tq, it.brand), description: it.description || null, imageUrl, webVisible: true, active: true };
+        const b = { name: it.name, brandId: await brandId(tq, it.brand), description: it.description || null, concentration: it.concentration || null, imageUrl, webVisible: true, active: true };
         await tq(`INSERT INTO products (name, name_ar, brand_id, category_id, description, description_ar, gender, concentration, notes_top, notes_heart, notes_base, image_url, web_visible, active, id, is_test)
           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,false)`, [...productFields(b), pid]);
-        await saveVariant(tq, pid, { label: 'Standard', retailPrice: it.price, webPrice: it.price, openingQty: 0 }, null, { perms: {} }, b);
+        await saveVariant(tq, pid, { label: it.sizeMl ? null : 'Standard', sizeMl: it.sizeMl || null, retailPrice: it.price || 0, webPrice: it.price || null, openingQty: 0 }, null, { perms: {} }, b);
         return pid;
       });
       created.push({ id: pid, name: it.name, price: it.price });
@@ -86,3 +86,23 @@ export async function publishLegacy(db, { items = LEGACY_PRODUCTS } = {}) {
   }
   return { published, skipped, failed };
 }
+
+// Designer perfumes the owner sent for the website gallery (photos already in the website media library).
+// They come in without a price: the owner sets it in Website & SEO → Set price, then adds them to the shop.
+const W = 'https://prosperous-white-anteater-57.hostingersite.com/wp-content/uploads/2026/11/gallery-';
+export const GALLERY_PRODUCTS = [
+  { name: 'Déclaration', brand: 'Cartier', concentration: 'Parfum', sizeMl: 50, price: 0, url: W + 'cartier-declaration-parfum.jpg' },
+  { name: 'La Panthère', brand: 'Cartier', concentration: 'Parfum', sizeMl: null, price: 0, url: W + 'cartier-la-panthere-parfum.jpg' },
+  { name: 'Baiser Volé', brand: 'Cartier', concentration: 'EDP', sizeMl: 100, price: 0, url: W + 'cartier-baiser-vole-edp.jpg' },
+  { name: 'Eros', brand: 'Versace', concentration: 'EDP', sizeMl: null, price: 0, url: W + 'versace-eros-edp.jpg' },
+  { name: 'The One', brand: 'Dolce & Gabbana', concentration: 'EDP', sizeMl: null, price: 0, url: W + 'dolce-gabbana-the-one-edp.jpg' },
+  { name: 'Black Opium', brand: 'Yves Saint Laurent', concentration: 'EDP', sizeMl: null, price: 0, url: W + 'ysl-black-opium.jpg' },
+  { name: 'The Only One', brand: 'Dolce & Gabbana', concentration: 'EDP', sizeMl: null, price: 0, url: W + 'dolce-gabbana-the-only-one.jpg' },
+  { name: 'Crystal Noir', brand: 'Versace', concentration: 'EDT', sizeMl: 30, price: 0, url: W + 'versace-crystal-noir-edt.jpg' },
+  { name: 'Libre', brand: 'Yves Saint Laurent', concentration: null, sizeMl: null, price: 0, url: W + 'ysl-libre.jpg' },
+  { name: 'CK Be', brand: 'Calvin Klein', concentration: 'EDT', sizeMl: 200, price: 0, url: W + 'ck-be-edt.jpg' },
+  { name: 'Black Opium (pink)', brand: 'Yves Saint Laurent', concentration: null, sizeMl: null, price: 0, url: W + 'ysl-black-opium-pink.jpg' },
+  { name: 'Women', brand: 'Calvin Klein', concentration: 'EDP', sizeMl: null, price: 0, url: W + 'calvin-klein-women-edp.jpg' },
+  { name: 'Sauvage', brand: 'Dior', concentration: 'EDP', sizeMl: null, price: 0, url: W + 'dior-sauvage-edp.jpg' },
+  { name: 'Hypnotic Poison', brand: 'Dior', concentration: 'EDP', sizeMl: null, price: 0, url: W + 'dior-hypnotic-poison-edp.jpg' },
+];

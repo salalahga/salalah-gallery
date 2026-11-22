@@ -206,7 +206,11 @@ function WebProducts({ canEdit }: { canEdit: boolean }) {
   const { data, reload } = useData<any[]>('/marketing/products' + qs({ search }), [search]);
   const [ed, setEd] = useState<any>(null);
   const [open, setOpen] = useState<string | null>(null);
+  const [pr, setPr] = useState<any>(null);
   const { busy, run } = useAction();
+  const { can } = useSession();
+  const noPrice = (p: any) => !(p.variants || []).length || (p.variants || []).some((v: any) => !((v.web_price ?? v.retail_price) > 0));
+  const savePrices = () => run(() => api.put(`/marketing/products/${pr.id}/prices`, { variants: pr.variants.map((v: any) => ({ id: v.id, price: parseMoney(v.price) })) }), 'Price saved — now press “Add to website”').then((r) => { if (r) { setPr(null); reload(); } });
   const prepare = (p: any) => run(() => api.post('/marketing/packages', { productId: p.id, kinds: ['web_product'] }), 'Website content prepared for approval').then((r) => { if (r?.created?.[0]) setOpen(r.created[0]); else if (r) toast('Already prepared today — see Content & approvals'); reload(); });
   return (
     <Card title="Products on the website" actions={<input placeholder="Search" value={search} onChange={(e) => setSearch(e.target.value)} style={{ width: 200 }} />}>
@@ -217,13 +221,19 @@ function WebProducts({ canEdit }: { canEdit: boolean }) {
             return <tr key={p.id}>
               <td style={{ width: 54 }}>{p.image_url ? <img src={p.image_url} alt="" style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 8 }} /> : '—'}</td>
               <td>{[p.brand, p.name].filter(Boolean).join(' ')}<div className="small muted">{p.category || ''}{p.web_visible ? '' : ' · hidden from website'}</div></td>
-              <td className="small">{(p.variants || []).map((v: any) => <div key={v.id}>{v.size_ml ? `${v.size_ml} ml` : v.label} · {money(v.web_price ?? v.retail_price)}{v.compare_price ? <s className="muted"> {money(v.compare_price)}</s> : null}</div>)}</td>
+              <td className="small">{noPrice(p) ? <span className="warn">Price needed</span> : (p.variants || []).map((v: any) => <div key={v.id}>{v.size_ml ? `${v.size_ml} ml` : v.label} · {money(v.web_price ?? v.retail_price)}{v.compare_price ? <s className="muted"> {money(v.compare_price)}</s> : null}</div>)}</td>
               <td className="small">{issues.length ? <span className="warn">{issues.join(', ')}</span> : <span className="ok">complete</span>}</td>
               <td className="small">{p.web_external_id ? <span className="badge ok">on website</span> : <span className="badge">not yet</span>}</td>
-              <td style={{ whiteSpace: 'nowrap' }}>{canEdit && <><button className="btn sm" onClick={() => setEd({ id: p.id, name: p.name, seoTitle: p.seo_title || '', seoDescription: p.seo_description || '', slug: p.slug || '' })}>SEO</button> <button className="btn sm gold" disabled={busy} onClick={() => prepare(p)}>{p.web_external_id ? 'Update website' : 'Add to website'}</button></>}</td>
+              <td style={{ whiteSpace: 'nowrap' }}>{can('inventory', 'edit') && <><button className={noPrice(p) ? 'btn sm gold' : 'btn sm'} onClick={() => setPr({ id: p.id, name: [p.brand, p.name].filter(Boolean).join(' '), variants: (p.variants || []).map((v: any) => ({ id: v.id, label: v.size_ml ? `${v.size_ml} ml` : v.label, price: (v.web_price ?? v.retail_price) > 0 ? ((v.web_price ?? v.retail_price) / 1000).toFixed(3) : '' })) })}>{noPrice(p) ? 'Set price' : 'Price'}</button> </>}{canEdit && !noPrice(p) && <><button className="btn sm" onClick={() => setEd({ id: p.id, name: p.name, seoTitle: p.seo_title || '', seoDescription: p.seo_description || '', slug: p.slug || '' })}>SEO</button> <button className="btn sm gold" disabled={busy} onClick={() => prepare(p)}>{p.web_external_id ? 'Update website' : 'Add to website'}</button></>}</td>
             </tr>;
           })}</tbody></table></div>
       )}
+      {pr && <Modal title={`Price — ${pr.name}`} onClose={() => setPr(null)} footer={<button className="btn primary" disabled={busy || pr.variants.some((v: any) => !(parseMoney(v.price) > 0))} onClick={savePrices}>Save price</button>}>
+        <div className="col">
+          {pr.variants.map((v: any, i: number) => <Field key={v.id} label={`${v.label || 'Price'} — selling price (OMR, VAT included)`}><input inputMode="decimal" placeholder="0.000" value={v.price} onChange={(e) => setPr({ ...pr, variants: pr.variants.map((x: any, j: number) => (j === i ? { ...x, price: e.target.value } : x)) })} /></Field>)}
+          <div className="small muted">This is the shop and website price. After saving, press “Add to website” to put the product in the online shop.</div>
+        </div>
+      </Modal>}
       {ed && <Modal title={`SEO — ${ed.name}`} onClose={() => setEd(null)} footer={<><button className="btn" disabled={busy} onClick={() => run(() => api.post('/marketing/copy', { productId: ed.id, lang: 'en', tone: 'professional' })).then((c) => c && setEd({ ...ed, seoTitle: c.seo_title, seoDescription: c.seo_description, slug: c.slug }))}>Suggest with AI</button><button className="btn primary" disabled={busy} onClick={() => run(() => api.put(`/website/products/${ed.id}/seo`, ed), 'Saved — publish a website update to send it live').then((r) => { if (r) { setEd(null); reload(); } })}>Save</button></>}>
         <div className="col">
           <Field label="SEO title" hint={`${ed.seoTitle.length}/60 characters`}><input value={ed.seoTitle} onChange={(e) => setEd({ ...ed, seoTitle: e.target.value })} /></Field>

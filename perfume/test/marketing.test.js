@@ -372,3 +372,26 @@ test('Studio gallery goes to a WordPress "Gallery" page; a second run uploads no
   assert.equal(again.data.uploaded, 0); assert.equal(again.data.total, n);
   assert.equal((await fetch(base + '/marketing/jobs/website-gallery', { method: 'POST' })).status, 401);
 });
+
+test('gallery perfumes come in without a price; website publishing waits until the owner sets one', async () => {
+  process.env.LEGACY_IMG_BASE = fakeBase + '/legacy/';
+  process.env.MKT_CRON_KEY = 'g'.repeat(32);
+  try {
+    const r = await fetch(base + '/marketing/import/legacy-job?set=gallery', { method: 'POST', headers: { 'x-cron-key': process.env.MKT_CRON_KEY } });
+    const d = await r.json();
+    assert.equal(r.status, 200, JSON.stringify(d));
+    assert.equal(d.failed.length, 0, JSON.stringify(d.failed));
+    assert.equal(d.created.length + d.skipped.length, 14);
+    const p = await db.one("SELECT p.id, v.id AS vid, v.retail_price, v.size_ml, b.name AS brand FROM products p JOIN variants v ON v.product_id = p.id JOIN brands b ON b.id = p.brand_id WHERE p.name = 'Hypnotic Poison' AND b.name = 'Dior'");
+    assert.equal(p.retail_price, 0);
+    await owner.put('/marketing/connections/website', { platform: 'woocommerce', url: fakeBase, key: 'shopowner', secret: 'abcd efgh ijkl mnop' });
+    const pk = await owner.post('/marketing/packages', { productId: p.id, kinds: ['web_product'] });
+    const cid = pk.data.created[0];
+    assert.equal((await owner.post(`/marketing/content/${cid}/approve`)).status, 200);
+    const blocked = await owner.post(`/marketing/content/${cid}/publish`);
+    assert.equal(blocked.status, 412); assert.match(blocked.data.error, /set the price first/i);
+    assert.equal((await owner.put(`/marketing/products/${p.id}/prices`, { variants: [{ id: p.vid, price: 0 }] })).status, 400);
+    assert.equal((await owner.put(`/marketing/products/${p.id}/prices`, { variants: [{ id: p.vid, price: 52500 }] })).status, 200);
+    assert.equal((await db.one('SELECT retail_price FROM variants WHERE id = $1', [p.vid])).retail_price, 52500);
+  } finally { delete process.env.LEGACY_IMG_BASE; delete process.env.MKT_CRON_KEY; }
+});
