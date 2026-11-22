@@ -13,7 +13,7 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   let data: Record<string, unknown> = {};
   try { data = text ? JSON.parse(text) : {}; } catch { data = { error: text }; }
   if (!r.ok) {
-    if (r.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/mfa')) onUnauthorised?.(data.code as string);
+    if (r.status === 401 && !path.startsWith('/auth/login') && !path.startsWith('/auth/mfa') && !path.startsWith('/auth/me')) onUnauthorised?.(data.code as string);
     if (r.status === 403 && (data.code === 'mfa_enrol_required' || data.code === 'password_change_required')) onUnauthorised?.(data.code as string);
     throw new ApiError(r.status, String(data.error || r.statusText), data);
   }

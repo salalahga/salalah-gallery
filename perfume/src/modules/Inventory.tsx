@@ -131,9 +131,9 @@ export function ProductForm({ id, onClose, onDone, barcode }: { id: string | nul
           <Field label="Name (Arabic)"><input value={p.nameAr} onChange={(e) => set('nameAr', e.target.value)} dir="rtl" /></Field>
           <div className="row">
             <Field label="Brand"><select value={p.brandId} onChange={(e) => set('brandId', e.target.value)}><option value="">—</option>{brands?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select></Field>
-            <button className="btn sm" style={{ marginTop: 18 }} onClick={addBrand}>+</button>
+            <button className="btn sm" style={{ marginTop: 18 }} onClick={addBrand} title="Add a new brand" aria-label="Add a new brand">+ New</button>
             <Field label="Category"><select value={p.categoryId} onChange={(e) => set('categoryId', e.target.value)}><option value="">—</option>{cats?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
-            <button className="btn sm" style={{ marginTop: 18 }} onClick={addCat}>+</button>
+            <button className="btn sm" style={{ marginTop: 18 }} onClick={addCat} title="Add a new category" aria-label="Add a new category">+ New</button>
           </div>
           <div className="row">
             <Field label="For"><select value={p.gender} onChange={(e) => set('gender', e.target.value)}>{['men', 'women', 'unisex', 'kids'].map((g) => <option key={g}>{g}</option>)}</select></Field>
@@ -149,30 +149,35 @@ export function ProductForm({ id, onClose, onDone, barcode }: { id: string | nul
         </div>
       </div>
       <h3 style={{ marginTop: 14 }}>Sizes & prices (OMR, {me.settings.tax.pricesIncludeVat ? 'VAT included' : 'before VAT'})</h3>
-      <div className="tablewrap"><table className="t">
-        <thead><tr><th>Size ml</th><th>Label</th><th>SKU</th><th>Barcode</th><th>Type</th><th>Retail</th><th title="Shown crossed out on the label">Original</th><th>Website</th><th>Wholesale</th><th>VAT bp</th><th>Min</th>{!id && can('inventory', 'manage') && <><th>Opening qty</th><th>Unit cost</th><th>Batch</th><th>Expiry</th></>}</tr></thead>
-        <tbody>{p.variants.map((v: any, i: number) => (
-          <tr key={i}>
-            <td><input value={v.sizeMl} onChange={(e) => setV(i, 'sizeMl', e.target.value)} style={{ width: 64 }} /></td>
-            <td><input value={v.label} onChange={(e) => setV(i, 'label', e.target.value)} style={{ width: 80 }} /></td>
-            <td><input value={v.sku} onChange={(e) => setV(i, 'sku', e.target.value)} style={{ width: 120 }} /></td>
-            <td style={{ whiteSpace: 'nowrap' }}>{v.id && !can('barcodes', 'manage') ? <span title="Only the owner/admin can change an existing barcode">{v.barcode} 🔒</span> : <><input value={v.barcode} onChange={(e) => setV(i, 'barcode', e.target.value)} placeholder="scan / auto" style={{ width: 130 }} /> <button className="btn ghost sm" title="Generate an in-store barcode" onClick={() => genBarcode(i)}>Generate</button></>}</td>
-            <td><select value={v.symbology} disabled={!!v.id && !can('barcodes', 'manage')} onChange={(e) => setV(i, 'symbology', e.target.value)} style={{ width: 110 }}><option value="auto">Auto</option>{Object.entries(SYMBOLOGIES).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></td>
-            <td><input value={v.retailPrice} onChange={(e) => setV(i, 'retailPrice', e.target.value)} style={{ width: 80 }} /></td>
-            <td><input value={v.comparePrice} onChange={(e) => setV(i, 'comparePrice', e.target.value)} style={{ width: 80 }} placeholder="—" /></td>
-            <td><input value={v.webPrice} onChange={(e) => setV(i, 'webPrice', e.target.value)} style={{ width: 80 }} /></td>
-            <td><input value={v.wholesalePrice} onChange={(e) => setV(i, 'wholesalePrice', e.target.value)} style={{ width: 80 }} /></td>
-            <td><input value={v.vatRateBp} onChange={(e) => setV(i, 'vatRateBp', e.target.value)} style={{ width: 60 }} /></td>
-            <td><input value={v.minStock} onChange={(e) => setV(i, 'minStock', e.target.value)} style={{ width: 50 }} /></td>
+      {p.variants.map((v: any, i: number) => (
+        <div key={i} className="card" style={{ padding: 14, marginBottom: 10 }}>
+          <div className="row" style={{ justifyContent: 'space-between', marginBottom: 6 }}>
+            <b>Size {i + 1}</b>
+            {!v.id && p.variants.length > 1 && <button className="btn ghost sm" onClick={() => set('variants', p.variants.filter((_: any, j: number) => j !== i))}>Remove</button>}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 }}>
+            <Field label="Size (ml)"><input value={v.sizeMl} onChange={(e) => setV(i, 'sizeMl', e.target.value)} inputMode="numeric" placeholder="100" /></Field>
+            <Field label="Retail price (OMR) *"><input value={v.retailPrice} onChange={(e) => setV(i, 'retailPrice', e.target.value)} inputMode="decimal" placeholder="15.750" /></Field>
             {!id && can('inventory', 'manage') && <>
-              <td><input value={v.openingQty} onChange={(e) => setV(i, 'openingQty', e.target.value)} style={{ width: 60 }} /></td>
-              <td><input value={v.unitCost} onChange={(e) => setV(i, 'unitCost', e.target.value)} style={{ width: 80 }} /></td>
-              <td><input value={v.batchNo} onChange={(e) => setV(i, 'batchNo', e.target.value)} style={{ width: 80 }} /></td>
-              <td><input type="date" value={v.expiryDate} onChange={(e) => setV(i, 'expiryDate', e.target.value)} /></td>
+              <Field label="Opening stock (qty)"><input value={v.openingQty} onChange={(e) => setV(i, 'openingQty', e.target.value)} inputMode="numeric" placeholder="0" /></Field>
+              <Field label="Unit cost (OMR)"><input value={v.unitCost} onChange={(e) => setV(i, 'unitCost', e.target.value)} inputMode="decimal" /></Field>
             </>}
-          </tr>
-        ))}</tbody>
-      </table></div>
+            <Field label="Label"><input value={v.label} onChange={(e) => setV(i, 'label', e.target.value)} placeholder="Standard" /></Field>
+            <Field label="Original price (crossed out)"><input value={v.comparePrice} onChange={(e) => setV(i, 'comparePrice', e.target.value)} inputMode="decimal" placeholder="—" /></Field>
+            <Field label="Website price"><input value={v.webPrice} onChange={(e) => setV(i, 'webPrice', e.target.value)} inputMode="decimal" placeholder="= retail" /></Field>
+            <Field label="Wholesale price"><input value={v.wholesalePrice} onChange={(e) => setV(i, 'wholesalePrice', e.target.value)} inputMode="decimal" /></Field>
+            <Field label="Low-stock alert at"><input value={v.minStock} onChange={(e) => setV(i, 'minStock', e.target.value)} inputMode="numeric" /></Field>
+            <Field label="VAT (500 = 5 %)"><input value={v.vatRateBp} onChange={(e) => setV(i, 'vatRateBp', e.target.value)} inputMode="numeric" /></Field>
+            <Field label="SKU"><input value={v.sku} onChange={(e) => setV(i, 'sku', e.target.value)} placeholder="auto" /></Field>
+            <Field label="Barcode">{v.id && !can('barcodes', 'manage') ? <span title="Only the owner/admin can change an existing barcode">{v.barcode} 🔒</span> : <div className="row" style={{ gap: 6, flexWrap: 'nowrap' }}><input value={v.barcode} onChange={(e) => setV(i, 'barcode', e.target.value)} placeholder="scan / auto" style={{ minWidth: 0 }} /><button className="btn ghost sm" title="Generate an in-store barcode" onClick={() => genBarcode(i)}>Gen</button></div>}</Field>
+            <Field label="Barcode type"><select value={v.symbology} disabled={!!v.id && !can('barcodes', 'manage')} onChange={(e) => setV(i, 'symbology', e.target.value)}><option value="auto">Auto</option>{Object.entries(SYMBOLOGIES).map(([k, n]) => <option key={k} value={k}>{n}</option>)}</select></Field>
+            {!id && can('inventory', 'manage') && <>
+              <Field label="Batch no."><input value={v.batchNo} onChange={(e) => setV(i, 'batchNo', e.target.value)} /></Field>
+              <Field label="Expiry date"><input type="date" value={v.expiryDate} onChange={(e) => setV(i, 'expiryDate', e.target.value)} /></Field>
+            </>}
+          </div>
+        </div>
+      ))}
       <button className="btn sm" onClick={() => set('variants', [...p.variants, blankVariant()])}>+ Size</button>
       <div className="small muted" style={{ marginTop: 6 }}>Barcode: scan the code printed on the perfume box, or leave it empty and an in-store barcode is created automatically. Every size gets its own barcode and SKU; duplicates are refused. Labels can be printed right after saving.</div>
       <div className="small muted" style={{ marginTop: 6 }}>VAT is in basis points: 500 = 5 %. Opening stock goes to your branch and is booked at the unit cost.</div>
