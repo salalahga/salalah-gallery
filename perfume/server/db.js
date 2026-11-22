@@ -5,6 +5,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// Dates ("today", daily totals, reports) follow the shop's clock in Oman, not UTC.
+const BUSINESS_TZ = /^[A-Za-z_]+\/[A-Za-z_]+$/.test(process.env.BUSINESS_TZ || '') ? process.env.BUSINESS_TZ : 'Asia/Muscat';
+
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SCHEMA = fs.readFileSync(path.join(here, 'schema.sql'), 'utf8');
 const SCHEMA_VERSION = 1;
@@ -38,7 +41,8 @@ export async function openDb({ dataDir, url = process.env.DATABASE_URL } = {}) {
     // server with another app without any table names clashing. Every connection gets the search_path.
     const schema = process.env.DB_SCHEMA;
     if (schema && !/^[a-z_][a-z0-9_]{0,40}$/.test(schema)) throw new Error('DB_SCHEMA must be a simple lowercase name');
-    const pool = new pg.Pool({ ...sslFor(url), max: Number(process.env.PG_POOL || 10), ...(schema ? { options: `-c search_path=${schema}` } : {}) });
+    const tzOpt = `-c timezone=${BUSINESS_TZ}`;
+    const pool = new pg.Pool({ ...sslFor(url), max: Number(process.env.PG_POOL || 10), options: schema ? `-c search_path=${schema} ${tzOpt}` : tzOpt });
     if (schema) await pool.query(`CREATE SCHEMA IF NOT EXISTS ${schema}`);
     const q = wrap(async (sql, p) => (await pool.query(sql, p)).rows);
     db = {
@@ -61,6 +65,7 @@ export async function openDb({ dataDir, url = process.env.DATABASE_URL } = {}) {
     const dir = dataDir === ':memory:' ? undefined : (dataDir || path.join(process.env.DATA_DIR || path.resolve('data'), 'pglite'));
     if (dir) fs.mkdirSync(dir, { recursive: true });
     const lite = new PGlite(dir, { parsers: { 20: toNum, 1700: toNum } });
+    await lite.exec(`SET TimeZone = '${BUSINESS_TZ}'`);
     // PGlite is a single connection: queue calls so a transaction is never interleaved with other work.
     let chain = Promise.resolve();
     const serial = (fn) => { const r = chain.then(fn, fn); chain = r.catch(() => {}); return r; };

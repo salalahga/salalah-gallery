@@ -1,7 +1,8 @@
 // Dashboard metrics — all read from live tables.
 import { moneyPosition, profitLoss } from './finance.js';
+import { localDate } from '../util.js';
 
-const day = (d) => d.toISOString().slice(0, 10);
+const day = (d) => localDate(d);
 export function ranges(now = new Date()) {
   const t = day(now);
   const w = new Date(now); w.setUTCDate(w.getUTCDate() - 6);

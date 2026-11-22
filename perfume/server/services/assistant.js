@@ -7,15 +7,16 @@ import { can, canSeeCost } from '../rbac.js';
 import { profitLoss, moneyPosition } from './finance.js';
 import { salesTotals } from './analytics.js';
 import { supplierSummary } from './purchases.js';
+import { localDate } from '../util.js';
 
-const iso = (d) => d.toISOString().slice(0, 10);
+const iso = (d) => localDate(d);
 function period(s, now = new Date()) {
   const t = iso(now);
   if (/yesterday|أمس|امس/.test(s)) { const y = iso(new Date(now.getTime() - 86400e3)); return { from: y, to: y, label: 'yesterday' }; }
   if (/last month|previous month|الشهر الماضي/.test(s)) {
-    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
-    const e = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 0));
-    return { from: iso(d), to: iso(e), label: 'last month' };
+    const [yy, mm] = t.split('-').map(Number);
+    const d = new Date(Date.UTC(yy, mm - 2, 1)), e = new Date(Date.UTC(yy, mm - 1, 0));
+    return { from: d.toISOString().slice(0, 10), to: e.toISOString().slice(0, 10), label: 'last month' };
   }
   if (/this week|last 7 days|week|الأسبوع|الاسبوع/.test(s)) return { from: iso(new Date(now.getTime() - 6 * 86400e3)), to: t, label: 'the last 7 days' };
   if (/this year|year to date|ytd|السنة|هذا العام/.test(s)) return { from: t.slice(0, 4) + '-01-01', to: t, label: 'this year' };

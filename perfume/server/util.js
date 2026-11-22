@@ -15,7 +15,9 @@ export async function nextNumber(q, key, prefix, pad = 6) {
   return `${prefix}-${String(r.value).padStart(pad, '0')}`;
 }
 
-export const today = () => new Date().toISOString().slice(0, 10);
+/** Today's date in the business's own time zone (Oman, UTC+4) — not UTC, so a sale at 00:30 lands on the right day. */
+export const localDate = (d = new Date()) => new Intl.DateTimeFormat('en-CA', { timeZone: /^[A-Za-z_]+\/[A-Za-z_]+$/.test(process.env.BUSINESS_TZ || '') ? process.env.BUSINESS_TZ : 'Asia/Muscat', year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+export const today = () => localDate();
 export const int = (v, name = 'value') => {
   const n = Number(v);
   if (!Number.isInteger(n)) fail(400, `${name} must be a whole number`);

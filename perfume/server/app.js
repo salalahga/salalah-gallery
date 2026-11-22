@@ -590,7 +590,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     res.json({ ok: true });
   }));
   api.get('/print-jobs', need('barcodes', 'view'), wrap(async (req, res) => {
-    const p = [req.query.from || '2000-01-01', (req.query.to || today()) + 'T23:59:59Z'];
+    const p = [req.query.from || '2000-01-01', (req.query.to || today()) + 'T23:59:59.999'];
     let extra = '';
     if (req.query.search) { p.push('%' + String(req.query.search).toLowerCase() + '%'); extra = ` AND EXISTS (SELECT 1 FROM print_job_lines l WHERE l.job_id = j.id AND (lower(l.product_name) LIKE $3 OR lower(l.sku) LIKE $3 OR l.barcode LIKE $3))`; }
     res.json(await db.query(`SELECT j.*, (SELECT json_agg(json_build_object('variant_id', l.variant_id, 'product_name', l.product_name, 'sku', l.sku, 'barcode', l.barcode, 'batch_no', l.batch_no, 'copies', l.copies) ORDER BY l.id) FROM print_job_lines l WHERE l.job_id = j.id) AS lines,
@@ -1026,7 +1026,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     res.json({ ok: true });
   }));
   api.get('/audit', need('audit', 'view'), wrap(async (req, res) => {
-    const p = [req.query.from || '2000-01-01', (req.query.to || today()) + 'T23:59:59Z'];
+    const p = [req.query.from || '2000-01-01', (req.query.to || today()) + 'T23:59:59.999'];
     let extra = '';
     if (req.query.userId) { p.push(req.query.userId); extra += ` AND user_id = $${p.length}`; }
     if (req.query.role) { p.push(req.query.role); extra += ` AND user_role = $${p.length}`; }
