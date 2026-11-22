@@ -12,14 +12,29 @@ services:
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U belleame"], interval: 5s, retries: 20 }
   app:
-    build: .
+    # Hosts whose Docker manager cannot build images (e.g. Hostinger) run the code straight from GitHub:
+    # on every start it fetches the branch, installs, builds and starts. Locally, `build: .` works too.
+    image: node:22-bookworm
     restart: unless-stopped
+    working_dir: /src
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        if [ -d /src/.git ]; then git -C /src fetch --depth 1 origin "$$BRANCH" && git -C /src reset --hard FETCH_HEAD; else git clone --depth 1 -b "$$BRANCH" "$$REPO" /src; fi
+        cd /src/perfume && npm ci --include=dev --no-audit --no-fund && npx vite build && exec node server/index.js
     depends_on: { db: { condition: service_healthy } }
     environment:
+      REPO: ${REPO:-https://github.com/salalahga/salalah-gallery.git}
+      BRANCH: ${BRANCH:-claude/perfume-business-system-9c3pe0}
+      NODE_ENV: production
+      PORT: "3001"
+      DATA_DIR: /data
       DATABASE_URL: postgres://belleame:${POSTGRES_PASSWORD}@db:5432/belleame
       DATABASE_SSL: disable
       PUBLIC_URL: https://${DOMAIN:?set DOMAIN}
-    volumes: [appdata:/data]
+    volumes: [appdata:/data, src:/src]
   caddy:
     image: caddy:2
     restart: unless-stopped
@@ -27,4 +42,4 @@ services:
     ports: ["80:80", "443:443"]
     command: caddy reverse-proxy --from ${DOMAIN} --to app:3001
     volumes: [caddydata:/data]
-volumes: { pgdata: {}, appdata: {}, caddydata: {} }
+volumes: { pgdata: {}, appdata: {}, caddydata: {}, src: {} }
