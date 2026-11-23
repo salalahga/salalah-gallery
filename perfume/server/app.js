@@ -1,5 +1,6 @@
 // HTTP API. Every route declares the module + permission level it needs; the check runs on the server,
 // so hiding a button in the UI is never the only protection. Every change is written to the audit log.
+import { toMinor } from '../shared/money.js';
 import express from 'express';
 import crypto from 'node:crypto';
 import { HttpError, fail, must, id, str, money, int, isoDate, today, toCsv, toExcelXml, posInt } from './util.js';
@@ -603,29 +604,129 @@ export async function createApp(db, { secureCookies = false, setupCode = process
       FROM variants v JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id WHERE v.id = ANY($1)`, [ids]));
   }));
 
+  /** Creates one product with its sizes (and opening stock) inside transaction q. */
+  async function createProduct(q, req, b) {
+    const pid = id('prd_');
+    await q(`INSERT INTO products (name, name_ar, brand_id, category_id, description, description_ar, gender, concentration, notes_top, notes_heart, notes_base, image_url, web_visible, active, id, is_test)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, [...productFields(b), pid, !!b.isTest]);
+    const vids = [];
+    for (const v of b.variants || []) {
+      const vid = await saveVariant(q, pid, v, null, req, b);
+      vids.push(vid);
+      if (Number(v.openingQty) > 0) {
+        checkBranch(req, 'inventory', v.branchId || b.branchId);
+        must(can(req.perms, 'inventory', 'manage'), 403, 'Entering opening stock needs Inventory "manage"');
+        await inv.receiveIntoStock(q, { branchId: v.branchId || b.branchId, variantId: vid, qty: posInt(v.openingQty), unitCost: money(v.unitCost || 0, 'unit cost'), reason: 'opening', refType: 'opening', userId: req.user.id, batchNo: str(v.batchNo, 60), expiryDate: isoDate(v.expiryDate) });
+        const value = posInt(v.openingQty) * money(v.unitCost || 0);
+        const { post } = await import('./services/ledger.js');
+        await post(q, { memo: `Opening stock ${v.sku}`, sourceType: 'opening', sourceId: vid, branchId: v.branchId || b.branchId, userId: req.user.id, isTest: !!b.isTest, lines: [{ account: '1200', debit: value }, { account: '3000', credit: value }] });
+      }
+    }
+    return { id: pid, variants: vids };
+  }
   api.post('/products', need('inventory', 'create'), wrap(async (req, res) => {
     must(str(req.body.name), 400, 'Product name is required');
-    const out = await tx(async (q) => {
-      const pid = id('prd_');
-      await q(`INSERT INTO products (name, name_ar, brand_id, category_id, description, description_ar, gender, concentration, notes_top, notes_heart, notes_base, image_url, web_visible, active, id, is_test)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`, [...productFields(req.body), pid, !!req.body.isTest]);
-      const vids = [];
-      for (const v of req.body.variants || []) {
-        const vid = await saveVariant(q, pid, v, null, req, req.body);
-        vids.push(vid);
-        if (Number(v.openingQty) > 0) {
-          checkBranch(req, 'inventory', v.branchId || req.body.branchId);
-          must(can(req.perms, 'inventory', 'manage'), 403, 'Entering opening stock needs Inventory "manage"');
-          await inv.receiveIntoStock(q, { branchId: v.branchId || req.body.branchId, variantId: vid, qty: posInt(v.openingQty), unitCost: money(v.unitCost || 0, 'unit cost'), reason: 'opening', refType: 'opening', userId: req.user.id, batchNo: str(v.batchNo, 60), expiryDate: isoDate(v.expiryDate) });
-          const value = posInt(v.openingQty) * money(v.unitCost || 0);
-          const { post } = await import('./services/ledger.js');
-          await post(q, { memo: `Opening stock ${v.sku}`, sourceType: 'opening', sourceId: vid, branchId: v.branchId || req.body.branchId, userId: req.user.id, isTest: !!req.body.isTest, lines: [{ account: '1200', debit: value }, { account: '3000', credit: value }] });
-        }
-      }
-      return { id: pid, variants: vids };
-    });
+    const out = await tx((q) => createProduct(q, req, req.body));
     res.locals.entityId = out.id;
     res.json(out);
+  }));
+  // ---------- Excel / CSV product import ----------
+  // Rows with the same name + brand become one product with several sizes. Existing products get the
+  // missing sizes; sizes that already exist are skipped, so importing the same sheet twice is safe.
+  // dryRun checks every row exactly as a real import would, then rolls everything back.
+  api.post('/products/import', need('inventory', 'create'), wrap(async (req, res) => {
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    must(rows.length, 400, 'The sheet has no product rows');
+    must(rows.length <= 3000, 400, 'Import at most 3000 rows at a time');
+    const dryRun = !!req.body.dryRun;
+    const branchId = req.body.branchId || req.user.branchId || (await db.one('SELECT id FROM branches ORDER BY created_at LIMIT 1'))?.id;
+    const txt = (v) => (v == null ? '' : String(v).trim());
+    const yes = (v) => !/^(no|n|false|0|hide|hidden|لا)$/i.test(txt(v));
+    const TYPES = ['Eau de Parfum', 'Eau de Toilette', 'Parfum / Extrait', 'Eau de Cologne', 'Perfume oil', 'Bakhoor', 'Gift set', 'Body mist', 'Other'];
+    const norm = (v) => txt(v).toLowerCase().replace(/[^a-z]/g, '');
+    const GENDERS = { men: 'men', man: 'men', male: 'men', women: 'women', woman: 'women', female: 'women', ladies: 'women', unisex: 'unisex', kids: 'kids', children: 'kids' };
+    const groups = new Map();
+    rows.forEach((r, i) => {
+      const line = Number(r._line) || i + 2;
+      const key = `${txt(r.name).toLowerCase()}|${txt(r.brand).toLowerCase()}`;
+      if (!groups.has(key)) groups.set(key, { line, rows: [] });
+      groups.get(key).rows.push({ ...r, _line: line });
+    });
+    const results = [];
+    const ROLLBACK = new Error('dry-run rollback');
+    const findOrMake = async (q, table, name) => {
+      if (!txt(name)) return null;
+      const hit = await q.one(`SELECT id FROM ${table} WHERE lower(name) = lower($1)`, [txt(name)]);
+      if (hit) return hit.id;
+      const nid = id(table === 'brands' ? 'brd_' : 'cat_');
+      await q(`INSERT INTO ${table} (id, name) VALUES ($1, $2)`, [nid, txt(name).slice(0, 80)]);
+      return nid;
+    };
+    for (const g of groups.values()) {
+      const first = g.rows[0];
+      const lines = g.rows.map((r) => r._line);
+      const label = [txt(first.brand), txt(first.name)].filter(Boolean).join(' ') || '(no name)';
+      try {
+        if (!txt(first.name)) fail(400, 'Name is empty');
+        const omr = (r, k, what) => {
+          const raw = typeof r[k] === 'number' ? r[k] : txt(r[k]).replace(/omr|ر\.ع\.?|ريال/gi, '').trim();
+          if (raw === '') return '';
+          try { const n = toMinor(raw); if (n < 0) throw new Error(); return String(n); } catch { fail(400, `Row ${r._line}: ${what} "${txt(r[k])}" is not a valid amount (e.g. 15.750)`); }
+        };
+        const variants = g.rows.map((r) => {
+          if (txt(r.retailPrice) === '') fail(400, `Row ${r._line}: retail price is empty`);
+          r = { ...r, retailPrice: omr(r, 'retailPrice', 'retail price'), comparePrice: omr(r, 'comparePrice', 'original price'), wholesalePrice: omr(r, 'wholesalePrice', 'wholesale price'), webPrice: omr(r, 'webPrice', 'website price'), unitCost: omr(r, 'unitCost', 'unit cost') };
+          return {
+            sizeMl: txt(r.sizeMl).replace(/\s*ml$/i, ''), label: txt(r.label), sku: txt(r.sku), barcode: txt(r.barcode),
+            retailPrice: txt(r.retailPrice), comparePrice: txt(r.comparePrice), wholesalePrice: txt(r.wholesalePrice), webPrice: txt(r.webPrice),
+            minStock: txt(r.minStock) || 0, openingQty: txt(r.openingQty) || 0, unitCost: txt(r.unitCost) || 0, batchNo: txt(r.batchNo), expiryDate: txt(r.expiryDate),
+            branchId, _line: r._line,
+          };
+        });
+        const out = await tx(async (q) => {
+          const brandId = await findOrMake(q, 'brands', first.brand);
+          const categoryId = await findOrMake(q, 'categories', first.category);
+          const existing = await q.one('SELECT id FROM products WHERE lower(name) = lower($1) AND brand_id IS NOT DISTINCT FROM $2', [txt(first.name), brandId]);
+          let r;
+          if (existing) {
+            const have = new Set((await q('SELECT size_ml, lower(COALESCE(label, \'\')) AS label FROM variants WHERE product_id = $1', [existing.id])).map((v) => `${v.size_ml ?? ''}|${v.label}`));
+            const add = variants.filter((v) => !have.has(`${v.sizeMl ? Number(v.sizeMl) : ''}|${v.label.toLowerCase()}`));
+            if (!add.length) r = { status: 'skipped', note: 'already in the system' };
+            else {
+              const prod = await q.one('SELECT name FROM products WHERE id = $1', [existing.id]);
+              for (const v of add) {
+                const vid = await saveVariant(q, existing.id, v, null, req, prod);
+                if (Number(v.openingQty) > 0) {
+                  must(can(req.perms, 'inventory', 'manage'), 403, 'Entering opening stock needs Inventory "manage"');
+                  await inv.receiveIntoStock(q, { branchId, variantId: vid, qty: posInt(v.openingQty, 'opening stock'), unitCost: money(v.unitCost || 0, 'unit cost'), reason: 'opening', refType: 'opening', userId: req.user.id, batchNo: str(v.batchNo, 60), expiryDate: isoDate(v.expiryDate) });
+                  const value = posInt(v.openingQty) * money(v.unitCost || 0);
+                  const { post } = await import('./services/ledger.js');
+                  if (value) await post(q, { memo: `Opening stock ${vid}`, sourceType: 'opening', sourceId: vid, branchId, userId: req.user.id, lines: [{ account: '1200', debit: value }, { account: '3000', credit: value }] });
+                }
+              }
+              r = { status: 'added', id: existing.id, note: `${add.length} new size${add.length > 1 ? 's' : ''} added to the existing product` };
+            }
+          } else {
+            const g0 = GENDERS[txt(first.gender).toLowerCase()] || 'unisex';
+            const created = await createProduct(q, req, {
+              name: txt(first.name), nameAr: txt(first.nameAr), brandId, categoryId, description: txt(first.description), descriptionAr: txt(first.descriptionAr),
+              gender: g0, concentration: ({ edp: 'Eau de Parfum', edt: 'Eau de Toilette', edc: 'Eau de Cologne', extrait: 'Parfum / Extrait', parfum: 'Parfum / Extrait', oil: 'Perfume oil', attar: 'Perfume oil', bakhoor: 'Bakhoor', bukhoor: 'Bakhoor', mist: 'Body mist' })[norm(first.concentration)] || TYPES.find((t) => norm(t) === norm(first.concentration)) || TYPES.find((t) => norm(t).startsWith(norm(first.concentration)) && norm(first.concentration).length > 2) || (txt(first.concentration) ? txt(first.concentration).slice(0, 40) : 'Eau de Parfum'), notesTop: txt(first.notesTop), notesHeart: txt(first.notesHeart), notesBase: txt(first.notesBase),
+              imageUrl: /^https:\/\//i.test(txt(first.imageUrl)) ? txt(first.imageUrl) : '', webVisible: yes(first.webVisible), active: true, branchId, variants,
+            });
+            r = { status: 'created', id: created.id, note: `${variants.length} size${variants.length > 1 ? 's' : ''}` };
+          }
+          if (dryRun) { ROLLBACK.result = r; throw ROLLBACK; }
+          return r;
+        }).catch((e) => { if (e === ROLLBACK) return ROLLBACK.result; throw e; });
+        results.push({ lines, product: label, ...out });
+      } catch (e) {
+        results.push({ lines, product: label, status: 'error', note: e.message || String(e) });
+      }
+    }
+    const count = (st) => results.filter((r) => r.status === st).length;
+    const summary = { created: count('created'), added: count('added'), skipped: count('skipped'), errors: count('error'), rows: rows.length };
+    if (!dryRun) await audit(req, 'products.import', 'products', null, summary);
+    res.json({ dryRun, summary, results });
   }));
   api.put('/products/:id', need('inventory', 'edit'), wrap(async (req, res) => {
     await tx(async (q) => {

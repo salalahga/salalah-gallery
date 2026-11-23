@@ -5,6 +5,7 @@ import { money, parseMoney, useSession, variantName, dateTime, date } from '../c
 import { LabelPrinter, type LabelItem } from '../components/Labels';
 import { ScanBox, useScanner, beep } from '../core/scanner';
 import { SYMBOLOGIES } from '../../shared/barcode.js';
+import { ProductImport } from './ProductImport';
 import { Bottle, Card, Empty, Field, Loading, Modal, PageHead, Status, Tabs, TestBadge, toast, useAction, useData, download } from '../components/ui';
 
 type Tab = 'stock' | 'transfers' | 'counts' | 'valuation' | 'expiry';
@@ -33,6 +34,7 @@ function Stock() {
   const [f, setF] = useState({ branchId: '', search: '', low: false });
   const { data, reload } = useData<any[]>('/inventory' + qs({ branchId: f.branchId, search: f.search, low: f.low ? 1 : '' }), [f.branchId, f.search, f.low]);
   const [edit, setEdit] = useState<string | 'new' | null>(null);
+  const [importing, setImporting] = useState(false);
   const [adj, setAdj] = useState<any>(null);
   const [moves, setMoves] = useState<any>(null);
   const [labels, setLabels] = useState<LabelItem[] | null>(null);
@@ -46,10 +48,11 @@ function Stock() {
         <div className="grow" />
         {can('reports', 'export') && <button className="btn" onClick={() => download('/export/inventory')}>CSV</button>}
         {data && data.length > 0 && <button className="btn" onClick={() => setLabels(data.map((v) => toLabel(v, 1)))}>Print barcode labels</button>}
+        {can('inventory', 'create') && <button className="btn" onClick={() => setImporting(true)}>Import Excel</button>}
         {can('inventory', 'create') && <button className="btn primary" onClick={() => setEdit('new')}>+ Product</button>}
       </div>
       <div className="card tablewrap">
-        {!data ? <Loading /> : !data.length ? <Empty>No products</Empty> : (
+        {!data ? <Loading /> : !data.length ? <Empty>{f.search || f.low || f.branchId ? 'No products' : <>No products yet — add one with <b>+ Product</b>, or many at once with <b>Import Excel</b>.</>}</Empty> : (
           <table className="t">
             <thead><tr><th></th><th>Product</th><th>SKU / barcode</th><th className="num">Retail</th>{me.seeCost && <th className="num">Avg cost</th>}<th className="num">In stock</th><th className="num">Min</th><th></th></tr></thead>
             <tbody>{data.map((v) => (
@@ -73,6 +76,7 @@ function Stock() {
         )}
       </div>
       {edit && <ProductForm id={edit === 'new' ? null : edit} onClose={() => setEdit(null)} onDone={() => { setEdit(null); reload(); }} />}
+      {importing && <ProductImport onClose={() => setImporting(false)} onDone={reload} />}
       {adj && <Adjust v={adj} branches={branches || []} onClose={() => setAdj(null)} onDone={() => { setAdj(null); reload(); }} />}
       {moves && <Movements v={moves} onClose={() => setMoves(null)} />}
       {labels && <LabelPrinter items={labels} onClose={() => setLabels(null)} />}

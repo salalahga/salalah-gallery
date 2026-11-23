@@ -373,3 +373,43 @@ test('barcodes: lookup, blocked stock cannot be sold, printers, templates and pr
   assert.equal((await owner.get('/print-jobs')).data.find((j) => j.id === job.data.id).reprints, 1);
   assert.equal((await cash.get('/print-jobs')).status, 200, 'cashier sees history (view)');
 });
+
+test('Excel import: check-only writes nothing, then import creates products, groups sizes, reuses brands and is safe to repeat', async () => {
+  const rows = [
+    { _line: 2, name: 'Import Oud Royal', brand: 'Import House', category: 'Oud', gender: 'Men', concentration: 'Eau de Parfum', sizeMl: '100 ml', retailPrice: '25.500', openingQty: '4', unitCost: '12' },
+    { _line: 3, name: 'Import Oud Royal', brand: 'Import House', sizeMl: '50', retailPrice: '15' },
+    { _line: 4, name: 'Import Rose', brand: 'import house', sizeMl: '30', retailPrice: '9.750', webVisible: 'no' },
+    { _line: 5, name: 'Broken Row', brand: 'Import House', sizeMl: '100', retailPrice: '' },
+  ];
+  const nBefore = (await db.one('SELECT COUNT(*)::int AS n FROM products')).n;
+  const t0 = await ledgerTotals();
+  const dry = await owner.post('/products/import', { rows, dryRun: true });
+  assert.equal(dry.status, 200, JSON.stringify(dry.data));
+  assert.deepEqual([dry.data.summary.created, dry.data.summary.errors], [2, 1]);
+  assert.match(dry.data.results.find((r) => r.status === 'error').note, /Row 5: retail price is empty/);
+  assert.equal((await db.one('SELECT COUNT(*)::int AS n FROM products')).n, nBefore, 'check-only must not save');
+  assert.ok(!(await db.one("SELECT 1 AS x FROM brands WHERE name = 'Import House'")), 'check-only must not create brands');
+
+  const real = await owner.post('/products/import', { rows });
+  assert.equal(real.status, 200, JSON.stringify(real.data));
+  assert.deepEqual([real.data.summary.created, real.data.summary.errors], [2, 1]);
+  const oud = await db.one("SELECT p.id, p.gender, p.web_visible, b.name AS brand FROM products p JOIN brands b ON b.id = p.brand_id WHERE p.name = 'Import Oud Royal'");
+  assert.deepEqual([oud.gender, oud.brand], ['men', 'Import House']);
+  const sizes = await db.query('SELECT size_ml, retail_price, barcode FROM variants WHERE product_id = $1 ORDER BY size_ml', [oud.id]);
+  assert.deepEqual(sizes.map((v) => [v.size_ml, v.retail_price]), [[50, 15000], [100, 25500]]);
+  assert.ok(sizes.every((v) => /^\d{13}$/.test(v.barcode)), 'barcodes generated');
+  assert.equal((await db.query("SELECT id FROM brands WHERE lower(name) = 'import house'")).length, 1, 'brand reused case-insensitively');
+  assert.equal((await db.one("SELECT web_visible FROM products WHERE name = 'Import Rose'")).web_visible, false);
+  const v100 = await db.one('SELECT id FROM variants WHERE product_id = $1 AND size_ml = 100', [oud.id]);
+  assert.equal(await stockOf(v100.id), 4);
+  const t1 = await ledgerTotals();
+  assert.equal(t1.d, t1.c);
+  assert.equal(t1.d - t0.d, 48000, 'opening stock booked at cost: 4 × 12.000');
+
+  const again = await owner.post('/products/import', { rows: [...rows.slice(0, 3), { _line: 6, name: 'Import Rose', brand: 'Import House', sizeMl: '100', retailPrice: '19' }] });
+  assert.deepEqual([again.data.summary.created, again.data.summary.added, again.data.summary.skipped], [0, 1, 1]);
+  assert.equal((await db.query("SELECT v.id FROM variants v JOIN products p ON p.id = v.product_id WHERE p.name = 'Import Rose'")).length, 2);
+
+  const { c: cash } = await login('cashier');
+  assert.equal((await cash.post('/products/import', { rows })).status, 403);
+});
