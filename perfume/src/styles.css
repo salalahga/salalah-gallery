@@ -226,7 +226,14 @@ hr.sep { border: none; border-top: 1px solid var(--line); margin: 16px 0; }
   .shell { display: block; } .page { padding: 0; max-width: none; } .card { box-shadow: none; border: none; }
   body { background: #fff; }
   .modal-bg { position: static; background: none; padding: 0; } .modal { box-shadow: none; } .modal header, .modal footer { display: none; }
+  /* with a window open, print only that window (e.g. a stock count sheet) */
+  body:has(.modal-bg) .page * { visibility: hidden; }
+  body:has(.modal-bg) .modal-bg, body:has(.modal-bg) .modal-bg * { visibility: visible; }
+  body:has(.modal-bg) .modal-bg { position: absolute; inset: 0 auto auto 0; width: 100%; }
+  .print-only { display: block !important; }
+  input { border: none !important; background: none !important; }
 }
+.print-only { display: none; }
 
 /* ---------- barcode labels: printed from their own frame (components/Labels.tsx) ---------- */
 .scanflash { animation: scanflash .6s ease; }

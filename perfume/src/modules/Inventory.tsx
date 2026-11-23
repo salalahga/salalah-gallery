@@ -6,20 +6,22 @@ import { LabelPrinter, type LabelItem } from '../components/Labels';
 import { ScanBox, useScanner, beep } from '../core/scanner';
 import { SYMBOLOGIES } from '../../shared/barcode.js';
 import { ProductImport } from './ProductImport';
+import { StockRegister, CountSheet } from './StockRegister';
 import { Bottle, Card, Empty, Field, Loading, Modal, PageHead, Status, Tabs, TestBadge, toast, useAction, useData, download } from '../components/ui';
 
-type Tab = 'stock' | 'transfers' | 'counts' | 'valuation' | 'expiry';
+type Tab = 'stock' | 'register' | 'transfers' | 'counts' | 'valuation' | 'expiry';
 
 export default function Inventory() {
   const { can } = useSession();
   const [tab, setTab] = useState<Tab>('stock');
-  const tabs: [Tab, string][] = [['stock', 'Stock'], ['transfers', 'Transfers'], ['counts', 'Stock-taking'], ['expiry', 'Batches & expiry']];
+  const tabs: [Tab, string][] = [['stock', 'Stock'], ['register', 'Monthly register'], ['transfers', 'Transfers'], ['counts', 'Stock-taking'], ['expiry', 'Batches & expiry']];
   if (can('finance') || can('inventory', 'manage')) tabs.push(['valuation', 'Valuation']);
   return (
     <>
       <PageHead title={t('Inventory')} sub="Stock per branch. Every change is recorded as a movement." />
       <Tabs tabs={tabs} value={tab} onChange={setTab} />
       {tab === 'stock' && <Stock />}
+      {tab === 'register' && <StockRegister />}
       {tab === 'transfers' && <Transfers />}
       {tab === 'counts' && <Counts />}
       {tab === 'valuation' && <Valuation />}
@@ -270,35 +272,9 @@ function Counts() {
     <>
       <div className="row" style={{ marginBottom: 10 }}><div className="grow muted">Count the shelves, enter what you find, then post: differences are booked automatically.</div>
         {can('inventory', 'edit') && <><select value={br} onChange={(e) => setBr(e.target.value)} style={{ width: 'auto' }}>{branches?.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}</select><button className="btn primary" disabled={busy} onClick={() => run(() => api.post('/inventory/counts', { branchId: br }), 'Count started').then((r) => { reload(); if (r) setOpen(r.id); })}>Start stock count</button></>}</div>
-      <div className="card">{!data ? <Loading /> : !data.length ? <Empty>No stock counts yet</Empty> : <table className="t"><tbody>{data.map((c) => <tr key={c.id} className="click" onClick={() => setOpen(c.id)}><td>{c.number}</td><td>{c.branch}</td><td>{dateTime(c.created_at)}</td><td><Status s={c.status} /></td></tr>)}</tbody></table>}</div>
+      <div className="card">{!data ? <Loading /> : !data.length ? <Empty>No stock counts yet</Empty> : <table className="t"><tbody>{data.map((c) => <tr key={c.id} className="click" onClick={() => setOpen(c.id)}><td>{c.number}{c.period && <div className="small muted">Month {c.period}</div>}</td><td>{c.branch}</td><td>{dateTime(c.created_at)}</td><td className="small">{c.counted} / {c.lines} counted</td><td><Status s={c.status} /></td></tr>)}</tbody></table>}</div>
       {open && <CountSheet id={open} onClose={() => { setOpen(null); reload(); }} />}
     </>
-  );
-}
-
-function CountSheet({ id, onClose }: { id: string; onClose: () => void }) {
-  const { can } = useSession();
-  const { data } = useData<any>(`/inventory/counts/${id}`);
-  const [counts, setCounts] = useState<Record<string, string>>({});
-  const { busy, run } = useAction();
-  const [scanMsg, setScanMsg] = useState('');
-  const onScan = (code: string) => {
-    const l = data?.lines.find((x: any) => x.barcode === code || x.sku.toLowerCase() === code.toLowerCase());
-    if (!l || data.status !== 'open') { beep(false); return setScanMsg(l ? 'This count is already posted' : `${code}: not part of this count`); }
-    const n = Number(counts[l.variant_id] ?? l.counted_qty ?? 0) + 1;
-    beep(true); setScanMsg(`${variantName(l)}: counted ${n}`); setCounts({ ...counts, [l.variant_id]: String(n) });
-  };
-  useScanner(onScan, !!data);
-  if (!data) return <Modal title="Stock count" onClose={onClose}><Loading /></Modal>;
-  const open = data.status === 'open';
-  return (
-    <Modal wide title={`Stock count ${data.number}`} onClose={onClose} footer={open && can('inventory', 'manage') ? <button className="btn primary" disabled={busy} onClick={() => run(() => api.post(`/inventory/counts/${id}/post`, { counts }), 'Count posted').then((r) => r && onClose())}>Post differences</button> : <button className="btn" onClick={() => window.print()}>Print</button>}>
-      {open && <div style={{ marginBottom: 10 }}><ScanBox onScan={onScan} placeholder="Scan every bottle on the shelf — each scan counts one" />{scanMsg && <div className="small muted">{scanMsg}</div>}</div>}
-      <table className="t"><thead><tr><th>Product</th><th>SKU</th><th className="num">System</th><th>Counted</th><th className="num">Difference</th></tr></thead>
-        <tbody>{data.lines.map((l: any) => { const c = counts[l.variant_id] ?? (l.counted_qty ?? ''); const d = c === '' ? null : Number(c) - l.system_qty; return (
-          <tr key={l.variant_id}><td>{variantName(l)}</td><td className="small">{l.sku}</td><td className="num">{l.system_qty}</td><td>{open ? <input value={c} onChange={(e) => setCounts({ ...counts, [l.variant_id]: e.target.value.replace(/[^\d]/g, '') })} style={{ width: 80 }} inputMode="numeric" /> : l.counted_qty}</td><td className={'num ' + (d ? (d < 0 ? 'bad' : 'ok') : '')}>{d ?? ''}</td></tr>
-        ); })}</tbody></table>
-    </Modal>
   );
 }
 

@@ -371,3 +371,8 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_title TEXT;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS seo_description TEXT;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS slug TEXT;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS web_external_id TEXT;
+-- monthly stock register: a stock count can belong to a month (YYYY-MM)
+ALTER TABLE stock_counts ADD COLUMN IF NOT EXISTS period TEXT;
+ALTER TABLE stock_count_lines ADD COLUMN IF NOT EXISTS counted_at TIMESTAMPTZ;
+ALTER TABLE stock_count_lines ADD COLUMN IF NOT EXISTS counted_by TEXT;
+CREATE INDEX IF NOT EXISTS stock_counts_period ON stock_counts(branch_id, period);

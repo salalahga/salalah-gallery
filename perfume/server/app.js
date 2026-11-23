@@ -781,7 +781,59 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     checkBranch(req, 'inventory', req.body.branchId);
     res.json(await tx((q) => inv.startCount(q, { ...req.body, userId: req.user.id })));
   }));
-  api.get('/inventory/counts', need('inventory', 'view'), wrap(async (_req, res) => res.json(await db.query('SELECT c.*, b.name AS branch FROM stock_counts c JOIN branches b ON b.id = c.branch_id ORDER BY c.created_at DESC LIMIT 50'))));
+  api.get('/inventory/counts', need('inventory', 'view'), wrap(async (_req, res) => res.json(await db.query(`SELECT c.*, b.name AS branch,
+    (SELECT COUNT(*)::int FROM stock_count_lines l WHERE l.count_id = c.id) AS lines,
+    (SELECT COUNT(*)::int FROM stock_count_lines l WHERE l.count_id = c.id AND l.counted_qty IS NOT NULL) AS counted
+    FROM stock_counts c JOIN branches b ON b.id = c.branch_id ORDER BY c.created_at DESC LIMIT 50`))));
+  api.put('/inventory/counts/:id/lines', need('inventory', 'edit'), wrap(async (req, res) => {
+    const c = await db.one('SELECT branch_id FROM stock_counts WHERE id = $1', [req.params.id]);
+    must(c, 404, 'Count not found');
+    checkBranch(req, 'inventory', c.branch_id);
+    res.json(await tx((q) => inv.saveCountLines(q, { countId: req.params.id, counts: req.body.counts, userId: req.user.id })));
+  }));
+  api.post('/inventory/counts/:id/cancel', need('inventory', 'manage'), wrap(async (req, res) => {
+    const r = await db.one("UPDATE stock_counts SET status = 'cancelled' WHERE id = $1 AND status = 'open' RETURNING id", [req.params.id]);
+    must(r, 409, 'Only an open count can be cancelled');
+    res.json({ ok: true });
+  }));
+  // Monthly stock register: opening + movements in the month = closing (system), next to the physical count of that month.
+  api.get('/inventory/register', need('inventory', 'view'), wrap(async (req, res) => {
+    const month = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(req.query.month || '')) ? String(req.query.month) : today().slice(0, 7);
+    const branchId = String(req.query.branchId || req.user.branchId || (await db.one('SELECT id FROM branches ORDER BY code LIMIT 1'))?.id || '');
+    checkBranch(req, 'inventory', branchId);
+    const start = `${month}-01`;
+    const [y, m] = month.split('-').map(Number);
+    const end = new Date(Date.UTC(y, m, 1)).toISOString().slice(0, 10); // first day of next month
+    const count = await db.one("SELECT id, number, status, created_at, posted_at FROM stock_counts WHERE branch_id = $1 AND period = $2 AND status <> 'cancelled' ORDER BY (status = 'posted') DESC, created_at DESC LIMIT 1", [branchId, month]);
+    const rows = await db.query(`
+      SELECT v.id AS variant_id, v.sku, v.barcode, v.size_ml, v.label, v.avg_cost, v.retail_price, p.name, b.name AS brand,
+        COALESCE(SUM(m.qty) FILTER (WHERE m.at < $2::date), 0)::int AS opening,
+        COALESCE(SUM(m.qty) FILTER (WHERE m.at >= $2::date AND m.at < $3::date AND m.reason IN ('opening','purchase','purchase_return')), 0)::int AS received,
+        COALESCE(-SUM(m.qty) FILTER (WHERE m.at >= $2::date AND m.at < $3::date AND m.reason IN ('sale','sale_return')), 0)::int AS sold,
+        COALESCE(SUM(m.qty) FILTER (WHERE m.at >= $2::date AND m.at < $3::date AND m.reason IN ('transfer_in','transfer_out')), 0)::int AS transfers,
+        COALESCE(SUM(m.qty) FILTER (WHERE m.at >= $2::date AND m.at < $3::date AND m.reason IN ('adjustment','damage','loss','expired')), 0)::int AS adjusted,
+        COALESCE(SUM(m.qty) FILTER (WHERE m.at >= $2::date AND m.at < $3::date AND m.reason = 'count'), 0)::int AS count_adj,
+        COALESCE(SUM(m.qty) FILTER (WHERE m.at < $3::date), 0)::int AS closing,
+        cl.system_qty, cl.counted_qty
+      FROM variants v JOIN products p ON p.id = v.product_id LEFT JOIN brands b ON b.id = p.brand_id
+      LEFT JOIN stock_movements m ON m.variant_id = v.id AND m.branch_id = $1
+      LEFT JOIN stock_count_lines cl ON cl.variant_id = v.id AND cl.count_id = $4
+      WHERE v.active OR cl.variant_id IS NOT NULL OR EXISTS (SELECT 1 FROM stock_movements x WHERE x.variant_id = v.id AND x.branch_id = $1)
+      GROUP BY v.id, p.name, b.name, cl.system_qty, cl.counted_qty
+      ORDER BY b.name NULLS LAST, p.name, v.size_ml NULLS LAST`, [branchId, start, end, count?.id || '']);
+    const seeCost = canSeeCost(req.perms);
+    const lines = rows.map((r) => {
+      const diff = r.counted_qty == null || r.system_qty == null ? null : r.counted_qty - r.system_qty;
+      return { ...r, avg_cost: seeCost ? r.avg_cost : undefined, difference: diff, difference_value: seeCost && diff != null ? diff * r.avg_cost : undefined, closing_value: seeCost ? r.closing * r.avg_cost : undefined };
+    });
+    const sum = (k) => lines.reduce((a, r) => a + (Number(r[k]) || 0), 0);
+    res.json({
+      month, branchId, count, seeCost, lines,
+      totals: { opening: sum('opening'), received: sum('received'), sold: sum('sold'), transfers: sum('transfers'), adjusted: sum('adjusted'), count_adj: sum('count_adj'), closing: sum('closing'),
+        counted: lines.filter((r) => r.counted_qty != null).length, differences: lines.filter((r) => r.difference).length,
+        closing_value: seeCost ? sum('closing_value') : undefined, difference_value: seeCost ? sum('difference_value') : undefined },
+    });
+  }));
   api.get('/inventory/counts/:id', need('inventory', 'view'), wrap(async (req, res) => {
     const c = await db.one('SELECT * FROM stock_counts WHERE id = $1', [req.params.id]);
     must(c, 404, 'Count not found');

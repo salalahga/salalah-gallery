@@ -428,3 +428,41 @@ test('Excel import: check-only writes nothing, then import creates products, gro
   const { c: cash } = await login('cashier');
   assert.equal((await cash.post('/products/import', { rows })).status, 403);
 });
+
+test('monthly stock register: opening + movements = closing; physical count saved as a draft, then posted', async () => {
+  const month = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Muscat', year: 'numeric', month: '2-digit' }).format(new Date());
+  const r0 = await owner.get(`/inventory/register?month=${month}&branchId=br_main`);
+  assert.equal(r0.status, 200, JSON.stringify(r0.data));
+  for (const l of r0.data.lines) assert.equal(l.opening + l.received - l.sold + l.transfers + l.adjusted + l.count_adj, l.closing, `register adds up for ${l.sku}`);
+  const k = r0.data.lines.find((l) => l.variant_id === KHAMRAH);
+  assert.equal(k.closing, await stockOf(KHAMRAH));
+
+  const start = await owner.post('/inventory/counts', { branchId: 'br_main', period: month });
+  assert.equal(start.status, 200, JSON.stringify(start.data));
+  const again = await owner.post('/inventory/counts', { branchId: 'br_main', period: month });
+  assert.equal(again.data.id, start.data.id, 'one open count per month and branch');
+
+  const sys = await stockOf(KHAMRAH);
+  const save = await owner.put(`/inventory/counts/${start.data.id}/lines`, { counts: { [KHAMRAH]: String(sys - 1) } });
+  assert.equal(save.status, 200, JSON.stringify(save.data));
+  assert.equal((await owner.put(`/inventory/counts/${start.data.id}/lines`, { counts: { [KHAMRAH]: '-3' } })).status, 400);
+  const r1 = await owner.get(`/inventory/register?month=${month}&branchId=br_main`);
+  const k1 = r1.data.lines.find((l) => l.variant_id === KHAMRAH);
+  assert.deepEqual([k1.counted_qty, k1.difference], [sys - 1, -1]);
+  assert.equal(r1.data.count.status, 'open');
+  const list = await owner.get('/inventory/counts');
+  assert.ok(list.data.find((c) => c.id === start.data.id).counted >= 1);
+
+  const { c: cash } = await login('cashier');
+  assert.equal((await cash.put(`/inventory/counts/${start.data.id}/lines`, { counts: { [KHAMRAH]: '1' } })).status, 403);
+
+  const t0 = await ledgerTotals();
+  const p = await owner.post(`/inventory/counts/${start.data.id}/post`, { counts: {} });
+  assert.equal(p.status, 200, JSON.stringify(p.data));
+  assert.equal(await stockOf(KHAMRAH), sys - 1);
+  const t1 = await ledgerTotals(); assert.equal(t1.d, t1.c); assert.ok(t1.d > t0.d);
+  const r2 = await owner.get(`/inventory/register?month=${month}&branchId=br_main`);
+  const k2 = r2.data.lines.find((l) => l.variant_id === KHAMRAH);
+  assert.deepEqual([k2.count_adj <= -1, k2.closing], [true, sys - 1]);
+  assert.equal(r2.data.count.status, 'posted');
+});

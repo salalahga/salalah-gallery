@@ -80,14 +80,34 @@ export async function transfer(q, { fromBranch, toBranch, lines, note, userId })
 }
 
 /** Stock-take: snapshot system quantities, staff enter counts, posting books the differences. */
-export async function startCount(q, { branchId, note, userId, variantIds }) {
+export async function startCount(q, { branchId, note, userId, variantIds, period }) {
+  const per = /^\d{4}-(0[1-9]|1[0-2])$/.test(String(period || '')) ? String(period) : null;
+  if (per) {
+    const open = await q.one("SELECT id, number FROM stock_counts WHERE branch_id = $1 AND period = $2 AND status = 'open'", [branchId, per]);
+    if (open) return { id: open.id, number: open.number, existing: true };
+  }
   const cid = id('cnt_');
   const number = await nextNumber(q, 'count', 'CNT');
-  await q('INSERT INTO stock_counts (id, number, branch_id, note, created_by) VALUES ($1,$2,$3,$4,$5)', [cid, number, branchId, str(note), userId]);
+  await q('INSERT INTO stock_counts (id, number, branch_id, note, created_by, period) VALUES ($1,$2,$3,$4,$5,$6)', [cid, number, branchId, str(note) || (per ? `Monthly stock count ${per}` : null), userId, per]);
   const rows = await q(`SELECT v.id, COALESCE(s.qty,0) AS qty FROM variants v LEFT JOIN stock_levels s ON s.variant_id = v.id AND s.branch_id = $1
     WHERE v.active ${variantIds?.length ? 'AND v.id = ANY($2)' : ''}`, variantIds?.length ? [branchId, variantIds] : [branchId]);
   for (const r of rows) await q('INSERT INTO stock_count_lines (count_id, variant_id, system_qty) VALUES ($1,$2,$3)', [cid, r.id, r.qty]);
   return { id: cid, number, lines: rows.length };
+}
+
+/** Saves counted quantities without posting, so counting can continue later (or on another device). */
+export async function saveCountLines(q, { countId, counts, userId }) {
+  const c = await q.one('SELECT status FROM stock_counts WHERE id = $1', [countId]);
+  must(c, 404, 'Stock count not found');
+  must(c.status === 'open', 409, 'This count is already posted');
+  let saved = 0;
+  for (const [variantId, n] of Object.entries(counts || {})) {
+    const v = n === '' || n == null ? null : int(n, 'count');
+    must(v == null || v >= 0, 400, 'A counted quantity cannot be negative');
+    const r = await q.one('UPDATE stock_count_lines SET counted_qty = $1, counted_at = CASE WHEN $1::int IS NULL THEN NULL ELSE now() END, counted_by = $2 WHERE count_id = $3 AND variant_id = $4 RETURNING variant_id', [v, userId, countId, variantId]);
+    if (r) saved++;
+  }
+  return { saved };
 }
 
 export async function postCount(q, { countId, counts, userId, isTest = false }) {
