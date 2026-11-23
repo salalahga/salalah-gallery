@@ -410,6 +410,21 @@ test('Excel import: check-only writes nothing, then import creates products, gro
   assert.deepEqual([again.data.summary.created, again.data.summary.added, again.data.summary.skipped], [0, 1, 1]);
   assert.equal((await db.query("SELECT v.id FROM variants v JOIN products p ON p.id = v.product_id WHERE p.name = 'Import Rose'")).length, 2);
 
+  // photos: an uploaded file becomes the photo of a new product, and of an existing product that had none
+  const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const up = await owner.post('/files', { data: png });
+  assert.equal(up.status, 200, JSON.stringify(up.data));
+  const ph = await owner.post('/products/import', { rows: [
+    { _line: 2, name: 'Import Musk', brand: 'Import House', sizeMl: '50', retailPrice: '7', imageUrl: up.data.url },
+    { _line: 3, name: 'Import Rose', brand: 'Import House', sizeMl: '30', retailPrice: '9.750', imageUrl: up.data.url },
+    { _line: 4, name: 'Import Bad Photo', brand: 'Import House', sizeMl: '30', retailPrice: '5', imageUrl: 'javascript:alert(1)' },
+  ] });
+  assert.equal(ph.status, 200, JSON.stringify(ph.data));
+  assert.equal((await db.one("SELECT image_url FROM products WHERE name = 'Import Musk'")).image_url, up.data.url);
+  assert.equal((await db.one("SELECT image_url FROM products WHERE name = 'Import Rose'")).image_url, up.data.url);
+  assert.match(ph.data.results.find((r) => r.product.endsWith('Import Rose')).note, /photo added/);
+  assert.ok(!(await db.one("SELECT image_url FROM products WHERE name = 'Import Bad Photo'")).image_url, 'unsafe photo links are dropped');
+
   const { c: cash } = await login('cashier');
   assert.equal((await cash.post('/products/import', { rows })).status, 403);
 });

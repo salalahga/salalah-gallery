@@ -654,6 +654,8 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     });
     const results = [];
     const ROLLBACK = new Error('dry-run rollback');
+    // A photo is an https link or a file uploaded to this system (/api/files/f_…).
+    const photoOf = (r) => { const u = txt(r.imageUrl); return /^https:\/\/\S+$/i.test(u) || /^\/api\/files\/f_[A-Za-z0-9_-]+$/.test(u) ? u.slice(0, 400) : ''; };
     const findOrMake = async (q, table, name) => {
       if (!txt(name)) return null;
       const hit = await q.one(`SELECT id FROM ${table} WHERE lower(name) = lower($1)`, [txt(name)]);
@@ -691,7 +693,10 @@ export async function createApp(db, { secureCookies = false, setupCode = process
           if (existing) {
             const have = new Set((await q('SELECT size_ml, lower(COALESCE(label, \'\')) AS label FROM variants WHERE product_id = $1', [existing.id])).map((v) => `${v.size_ml ?? ''}|${v.label}`));
             const add = variants.filter((v) => !have.has(`${v.sizeMl ? Number(v.sizeMl) : ''}|${v.label.toLowerCase()}`));
-            if (!add.length) r = { status: 'skipped', note: 'already in the system' };
+            const photo = photoOf(g.rows.find((x) => photoOf(x)) || {});
+            const setPhoto = photo && !(await q.one('SELECT image_url FROM products WHERE id = $1', [existing.id]))?.image_url;
+            if (setPhoto) await q('UPDATE products SET image_url = $1, updated_at = now() WHERE id = $2', [photo, existing.id]);
+            if (!add.length) r = setPhoto ? { status: 'added', id: existing.id, note: 'photo added to the existing product' } : { status: 'skipped', note: 'already in the system' };
             else {
               const prod = await q.one('SELECT name FROM products WHERE id = $1', [existing.id]);
               for (const v of add) {
@@ -704,14 +709,14 @@ export async function createApp(db, { secureCookies = false, setupCode = process
                   if (value) await post(q, { memo: `Opening stock ${vid}`, sourceType: 'opening', sourceId: vid, branchId, userId: req.user.id, lines: [{ account: '1200', debit: value }, { account: '3000', credit: value }] });
                 }
               }
-              r = { status: 'added', id: existing.id, note: `${add.length} new size${add.length > 1 ? 's' : ''} added to the existing product` };
+              r = { status: 'added', id: existing.id, note: `${add.length} new size${add.length > 1 ? 's' : ''} added to the existing product${setPhoto ? ' + photo' : ''}` };
             }
           } else {
             const g0 = GENDERS[txt(first.gender).toLowerCase()] || 'unisex';
             const created = await createProduct(q, req, {
               name: txt(first.name), nameAr: txt(first.nameAr), brandId, categoryId, description: txt(first.description), descriptionAr: txt(first.descriptionAr),
               gender: g0, concentration: ({ edp: 'Eau de Parfum', edt: 'Eau de Toilette', edc: 'Eau de Cologne', extrait: 'Parfum / Extrait', parfum: 'Parfum / Extrait', oil: 'Perfume oil', attar: 'Perfume oil', bakhoor: 'Bakhoor', bukhoor: 'Bakhoor', mist: 'Body mist' })[norm(first.concentration)] || TYPES.find((t) => norm(t) === norm(first.concentration)) || TYPES.find((t) => norm(t).startsWith(norm(first.concentration)) && norm(first.concentration).length > 2) || (txt(first.concentration) ? txt(first.concentration).slice(0, 40) : 'Eau de Parfum'), notesTop: txt(first.notesTop), notesHeart: txt(first.notesHeart), notesBase: txt(first.notesBase),
-              imageUrl: /^https:\/\//i.test(txt(first.imageUrl)) ? txt(first.imageUrl) : '', webVisible: yes(first.webVisible), active: true, branchId, variants,
+              imageUrl: photoOf(g.rows.find((x) => photoOf(x)) || {}), webVisible: yes(first.webVisible), active: true, branchId, variants,
             });
             r = { status: 'created', id: created.id, note: `${variants.length} size${variants.length > 1 ? 's' : ''}` };
           }
