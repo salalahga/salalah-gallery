@@ -466,3 +466,24 @@ test('monthly stock register: opening + movements = closing; physical count save
   assert.deepEqual([k2.count_adj <= -1, k2.closing], [true, sys - 1]);
   assert.equal(r2.data.count.status, 'posted');
 });
+
+test('owner password recovery needs the server setup code', async () => {
+  const code = 'RECOVER-CODE-123';
+  const db2 = await openDb({ dataDir: ':memory:' });
+  const app2 = await createApp(db2, { setupCode: code });
+  const srv = await new Promise((r) => { const s = app2.listen(0, () => r(s)); });
+  const b2 = `http://127.0.0.1:${srv.address().port}/api`;
+  const post = async (p, body) => { const r = await fetch(b2 + p, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }); return { status: r.status, data: await r.json() }; };
+  try {
+    assert.equal((await post('/auth/setup', { name: 'Boss', username: 'boss', password: 'First1234', setupCode: code })).status, 200);
+    assert.equal((await post('/auth/recover', { setupCode: 'wrong', password: 'Newpass123' })).status, 403);
+    assert.equal((await post('/auth/recover', { setupCode: code, password: 'short' })).status, 400);
+    const ok = await post('/auth/recover', { setupCode: code, password: 'Newpass123' });
+    assert.equal(ok.status, 200, JSON.stringify(ok.data));
+    assert.equal(ok.data.username, 'boss', 'tells the forgotten username');
+    assert.equal((await post('/auth/login', { username: 'boss', password: 'First1234' })).status, 401);
+    assert.equal((await post('/auth/login', { username: 'boss', password: 'Newpass123' })).status, 200);
+  } finally { srv.close(); await db2.close(); }
+  // without a setup code on the server, recovery is off
+  assert.equal((await owner.post('/auth/recover', { setupCode: 'x', password: 'Newpass123' })).status, 404);
+});

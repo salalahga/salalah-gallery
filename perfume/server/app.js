@@ -116,7 +116,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
   api.get('/status', wrap(async (_req, res) => {
     const n = await db.one('SELECT COUNT(*)::int AS n FROM users');
     const s = await getSettings(db.query);
-    res.json({ ok: true, setupDone: n.n > 0, setupNeedsCode: !!setupCode, business: { name: s.business.name, nameAr: s.business.nameAr }, db: db.kind });
+    res.json({ ok: true, setupDone: n.n > 0, setupNeedsCode: !!setupCode, canRecover: !!setupCode, business: { name: s.business.name, nameAr: s.business.nameAr }, db: db.kind });
   }));
 
   api.post('/auth/setup', wrap(async (req, res) => {
@@ -137,6 +137,33 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     await startSession(req, res, user, 'admin', true);
     req.user = user; void audit(req, 'setup', 'users', uid, { username: user.username, demo: !!req.body.demo });
     res.json({ ok: true });
+  }));
+
+  // Owner password recovery with the server's SETUP_CODE (only the person who runs the server has it).
+  // Without a username it recovers the first owner account and tells which username it is.
+  const recoverTries = new Map();
+  api.post('/auth/recover', wrap(async (req, res) => {
+    must(setupCode, 404, 'Password recovery is not set up on this server. Ask whoever runs the server.');
+    const key = req.ip || 'x';
+    const t = recoverTries.get(key) || { n: 0, at: Date.now() };
+    if (Date.now() - t.at > 15 * 60e3) { t.n = 0; t.at = Date.now(); }
+    if (t.n >= 10) fail(429, 'Too many attempts. Try again in 15 minutes.');
+    const a = Buffer.from(String(req.body.setupCode || '').trim()), b = Buffer.from(setupCode);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      t.n++; recoverTries.set(key, t);
+      void audit(req, 'recover_failed', 'users', null, { username: req.body.username });
+      fail(403, 'Wrong setup code');
+    }
+    const uname = String(req.body.username || '').toLowerCase().trim();
+    const u = uname
+      ? await db.one("SELECT * FROM users WHERE username = $1 AND role IN ('owner','admin')", [uname])
+      : await db.one("SELECT * FROM users WHERE role = 'owner' ORDER BY created_at LIMIT 1");
+    must(u, 404, uname ? 'No owner or admin account with that username' : 'No owner account found');
+    const bad = passwordProblem(req.body.password); if (bad) fail(400, bad);
+    await db.query('UPDATE users SET hash = $1, must_change_password = false, failed_logins = 0, locked_until = NULL, active = true, updated_at = now() WHERE id = $2', [hashPassword(req.body.password), u.id]);
+    await db.query('DELETE FROM sessions WHERE user_id = $1', [u.id]); // sign out everywhere else
+    req.user = u; void audit(req, 'password_recovered', 'users', u.id, { username: u.username });
+    res.json({ ok: true, username: u.username });
   }));
 
   const attempts = new Map(); // per-IP throttle on top of the per-account lockout

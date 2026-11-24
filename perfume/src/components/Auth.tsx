@@ -4,7 +4,7 @@ import { LANGS, setLang, t, useLang } from '../core/i18n';
 import { SessionCtx, type Me } from '../core/session';
 import { Field, toastError, Toasts } from './ui';
 
-type Status = { setupDone: boolean; setupNeedsCode: boolean; business: { name: string; nameAr: string } };
+type Status = { setupDone: boolean; setupNeedsCode: boolean; canRecover?: boolean; business: { name: string; nameAr: string } };
 
 function LangPick() {
   const lang = useLang();
@@ -16,7 +16,7 @@ export function AuthGate({ app, title, children }: { app: 'admin' | 'manager' | 
   useLang();
   const [status, setStatus] = useState<Status | null>(null);
   const [me, setMe] = useState<Me | null>(null);
-  const [stage, setStage] = useState<'loading' | 'setup' | 'login' | 'mfa' | 'enrol' | 'password' | 'in'>('loading');
+  const [stage, setStage] = useState<'loading' | 'setup' | 'login' | 'recover' | 'mfa' | 'enrol' | 'password' | 'in'>('loading');
   const load = async () => {
     try {
       const s = await api.get<Status>('/status');
@@ -54,7 +54,8 @@ export function AuthGate({ app, title, children }: { app: 'admin' | 'manager' | 
           <div style={{ textAlign: 'center', marginBottom: 18 }}><img src="/brand/logo-dark.png" alt={name} style={{ height: 120, maxWidth: '100%' }} /><div className="muted" style={{ marginTop: 6, letterSpacing: '.18em', textTransform: 'uppercase', fontSize: 11 }}>{title}</div></div>
           {stage === 'loading' && <div className="muted">Loading…</div>}
           {stage === 'setup' && <Setup needsCode={!!status?.setupNeedsCode} onDone={load} />}
-          {stage === 'login' && <Login app={app} onDone={load} />}
+          {stage === 'login' && <Login app={app} onDone={load} onForgot={app === 'admin' && status?.canRecover ? () => setStage('recover') : undefined} />}
+          {stage === 'recover' && <Recover onDone={() => setStage('login')} />}
           {stage === 'mfa' && <Mfa onDone={load} onCancel={logout} />}
           {stage === 'password' && <ChangePassword onDone={load} forced />}
           {stage === 'enrol' && <Enrol onDone={load} />}
@@ -94,7 +95,7 @@ function PerfumeScene() {
   );
 }
 
-function Login({ app, onDone }: { app: string; onDone: () => void }) {
+function Login({ app, onDone, onForgot }: { app: string; onDone: () => void; onForgot?: () => void }) {
   const [u, setU] = useState(''); const [p, setP] = useState(''); const [busy, setBusy] = useState(false);
   const submit = async (e: FormEvent) => { e.preventDefault(); setBusy(true); try { await api.post('/auth/login', { username: u, password: p, app }); onDone(); } catch (er) { toastError(er); } finally { setBusy(false); } };
   return (
@@ -102,7 +103,41 @@ function Login({ app, onDone }: { app: string; onDone: () => void }) {
       <Field label={t('Username')}><input value={u} onChange={(e) => setU(e.target.value)} autoComplete="username" autoCapitalize="none" required /></Field>
       <Field label={t('Password')}><input type="password" value={p} onChange={(e) => setP(e.target.value)} autoComplete="current-password" required /></Field>
       <button className="btn gold lg" disabled={busy}>{t('Sign in')}</button>
+      {onForgot && <button type="button" className="btn ghost sm" onClick={onForgot}>Forgot username or password?</button>}
       <div className="small muted">{app === 'manager' ? 'Business Manager access is set by the owner.' : app === 'staff' ? 'Staff self-service: attendance, leave, payslips and your sales.' : 'Owner, admin, accounts, HR and till staff.'}</div>
+    </form>
+  );
+}
+
+/** Owner recovery with the server's setup code (from the server secrets file). Staff ask the owner instead. */
+function Recover({ onDone }: { onDone: () => void }) {
+  const [f, setF] = useState({ setupCode: '', username: '', password: '', confirm: '' });
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState('');
+  const set = (k: string, v: string) => setF((x) => ({ ...x, [k]: v }));
+  const submit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (f.password !== f.confirm) return toastError(new Error('The two passwords are not the same'));
+    setBusy(true);
+    try { const r = await api.post<{ username: string }>('/auth/recover', { setupCode: f.setupCode, username: f.username, password: f.password }); setDone(r.username); }
+    catch (er) { toastError(er); } finally { setBusy(false); }
+  };
+  if (done) return (
+    <div className="col">
+      <div className="ok"><b>Password changed.</b></div>
+      <div>Your username is <b style={{ fontSize: 18 }}>{done}</b>. Sign in with it and the new password.</div>
+      <button className="btn gold lg" onClick={onDone}>Go to sign in</button>
+    </div>
+  );
+  return (
+    <form className="col" onSubmit={submit}>
+      <div className="muted">Owner account recovery. You need the <b>setup code</b> from the server secrets file (belleame-server-secrets.txt). Staff: ask the owner to reset your password.</div>
+      <Field label="Setup code"><input value={f.setupCode} onChange={(e) => set('setupCode', e.target.value)} autoCapitalize="none" autoComplete="off" required /></Field>
+      <Field label="Username (leave empty if you forgot it)"><input value={f.username} onChange={(e) => set('username', e.target.value)} autoCapitalize="none" autoComplete="username" placeholder="owner" /></Field>
+      <Field label="New password (8+ characters, letters and numbers)"><input type="password" value={f.password} onChange={(e) => set('password', e.target.value)} autoComplete="new-password" required /></Field>
+      <Field label="New password again"><input type="password" value={f.confirm} onChange={(e) => set('confirm', e.target.value)} autoComplete="new-password" required /></Field>
+      <button className="btn gold lg" disabled={busy}>Set new password</button>
+      <button type="button" className="btn ghost sm" onClick={onDone}>Back to sign in</button>
     </form>
   );
 }
