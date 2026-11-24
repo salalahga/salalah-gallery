@@ -259,7 +259,7 @@ export async function createApp(db, { secureCookies = false, setupCode = process
     res.end(Buffer.from(f.data));
   }));
 
-  mountMarketingPublic(api, { db, wrap, deps: () => ({ saveVariant, productFields }) });
+  mountMarketingPublic(api, { db, wrap, setupCode, deps: () => ({ saveVariant, productFields }) });
 
   // ---------- everything below needs a login ----------
   api.use(authed);

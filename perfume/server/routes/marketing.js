@@ -13,7 +13,7 @@ import { chat } from '../services/mkt/assistant.js';
 const MEDIA = /^(image\/(jpeg|png|webp)|video\/(mp4|quicktime)|audio\/(mpeg|mp4|aac|wav|x-wav|x-m4a))$/;
 
 /** Routes that must work without a login: website visit tracking and the scheduler heartbeat. */
-export function mountPublic(api, { db, wrap, deps }) {
+export function mountPublic(api, { db, wrap, deps, setupCode }) {
   const q = db.query;
   api.get('/t.js', (req, res) => {
     const origin = E.originOf(req);
@@ -52,8 +52,9 @@ s('pageview');if(p)s('product_view')}catch(e){}})();`);
   }));
   // One-time import of the old belleameoman.com catalogue, run by a hosting job (same key check as the cron).
   api.post('/marketing/import/legacy-job', wrap(async (req, res) => {
-    const given = String(req.get('x-cron-key') || req.get('ample-job-token') || '');
-    const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN].filter(Boolean);
+    // also accepts the server's SETUP_CODE (x-setup-code), so whoever runs the server can trigger the import
+    const given = String(req.get('x-cron-key') || req.get('ample-job-token') || req.get('x-setup-code') || '');
+    const keys = [(await E.mktSettings(q)).cronKey, process.env.MKT_CRON_KEY, process.env.AMPLE_JOB_TOKEN, setupCode].filter(Boolean);
     must(keys.some((key) => given.length === key.length && crypto.timingSafeEqual(Buffer.from(given), Buffer.from(key))), 401, 'Wrong key');
     const r = await importLegacy(db, { ...deps(), ...(req.query.set === 'gallery' ? { items: GALLERY_PRODUCTS } : {}) });
     if (String(req.query.publish || '') === '1') r.website = await publishLegacy(db);
