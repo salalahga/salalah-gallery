@@ -79,7 +79,7 @@ You are continuing work from a previous chat. That chat is gone; this file is th
 | WooCommerce site | prosperous-white-anteater-57.hostingersite.com ("Coming soon") |
 | Old site | https://belleameoman.com |
 | Repo / branch | salalahga/salalah-gallery · claude/perfume-business-system-9c3pe0 · app in `perfume/` |
-| Latest deployed commit | d93b170 (owner password recovery) |
+| Latest deployed commit | 228982b (legacy import job accepts setup code) |
 | Tests | 64 pass (`cd perfume && npm test`) |
 | Money | stored as integer baisa (1 OMR = 1000) |
 | Owner login | created by the user on the setup page; username/password unknown to Claude — [secret removed: re-enter it] |
@@ -99,13 +99,13 @@ Old-website products (baisa): Leo Hebrew Collection 15750; Luxury Edition Magic 
 | Add product form (iPad-friendly) | done | Inventory → + Product | |
 | Excel import + photos | done | Inventory → Import Excel | |
 | Monthly stock register + physical count | done | Inventory → Monthly register | |
-| Old-site + gallery product import (22) | button ready, not run | Marketing → Website & SEO → "Import old-website & gallery products" | 14 need prices |
+| Old-site + gallery product import | done 2026-11-24 | 8 old-site + 13 gallery created; "Sauvage" skipped (already in ERP) | 13 gallery items have price 0 → set prices |
 | Website (WooCommerce, belleame theme) | Coming soon | hostingersite.com URL | go-live only on user's word |
 | Ample jobs (marketing-scheduler, import-old-website, website-gallery) + old Ample app | still exist | Ample | stop when Ample is back |
 | Owner "Forgot username or password?" | done, live | login page → needs SETUP_CODE from belleame-server-secrets.txt | shows the username, sets a new password |
 
 ## 11. Next steps
-1. **Next action:** confirm the user can sign in (via "Forgot username or password?" if needed), then help the user import products (Excel template) and set prices for the 14 gallery items.
+1. **Next action:** confirm the user can sign in (via "Forgot username or password?" if needed), then help the user set prices for the 13 imported gallery items (price 0) and import more products (Excel template).
 2. Later, on the user's go: website live, payment/delivery, point belleameoman.com to the new site.
 3. When Ample is back: stop the 3 Ample jobs, shut the old Ample app.
 
